@@ -1,0 +1,90 @@
+{
+  "timestamp": "2026-02-06T17:48:08.425774",
+  "server": "https://launch.smarthealthit.org/v/r4/fhir",
+  "fhir_version": "4.0.0",
+  "checks": [
+    {
+      "check": "Server reachable",
+      "passed": true,
+      "details": "FHIR version 4.0.0"
+    },
+    {
+      "check": "Type 2 Diabetes conditions found",
+      "passed": true,
+      "details": "20 entries, 20 unique patients"
+    },
+    {
+      "check": "Patient resources fetchable",
+      "passed": true,
+      "details": "8/10 succeeded"
+    },
+    {
+      "check": "HbA1c observations found",
+      "passed": true,
+      "details": "8 patients have HbA1c data"
+    },
+    {
+      "check": "HbA1c values > 7.5% found",
+      "passed": true,
+      "details": "1 patients with poor control"
+    },
+    {
+      "check": "MedicationRequest resources found",
+      "passed": true,
+      "details": "5/5 patients have medications"
+    },
+    {
+      "check": "Encounter resources found",
+      "passed": true,
+      "details": "5/5 patients have encounters"
+    },
+    {
+      "check": "Multiple conditions per patient found",
+      "passed": true,
+      "details": "5/5 patients have multiple conditions"
+    },
+    {
+      "check": "Hypertension conditions found",
+      "passed": false,
+      "details": "0 conditions, 0 patients"
+    },
+    {
+      "check": "Creatinine observations found",
+      "passed": false,
+      "details": "0/5 patients have creatinine data"
+    }
+  ],
+  "sample_data": {
+    "diabetes_patients": [
+      "ecaea95c-46de-4ac9-a58d-4847d1a3e574",
+      "bd6f9f37-7295-4cd6-b212-134afcef1253",
+      "9efca32a-04f9-438a-990c-a287e8b62aac",
+      "ffd502c9-23e1-4f8f-bc8a-87373acad280",
+      "948e608d-e408-4788-8cf2-8157c49c2940",
+      "ebb1f0e2-4fa6-4889-a43b-9cda3c737078",
+      "f12a1a30-9ce0-48dd-91de-ce5c3fcf8828",
+      "af0e5952-c2ac-44fc-a896-36e9e30c2097",
+      "132f48ba-1d72-4e0c-a220-91786d7501aa",
+      "efe58fa2-c6df-4a71-8e37-06c5e4f1e2b8"
+    ],
+    "patients_with_hba1c": [
+      "ecaea95c-46de-4ac9-a58d-4847d1a3e574",
+      "bd6f9f37-7295-4cd6-b212-134afcef1253",
+      "9efca32a-04f9-438a-990c-a287e8b62aac",
+      "948e608d-e408-4788-8cf2-8157c49c2940",
+      "ebb1f0e2-4fa6-4889-a43b-9cda3c737078",
+      "f12a1a30-9ce0-48dd-91de-ce5c3fcf8828",
+      "af0e5952-c2ac-44fc-a896-36e9e30c2097",
+      "efe58fa2-c6df-4a71-8e37-06c5e4f1e2b8"
+    ],
+    "patients_poor_control": [
+      "ebb1f0e2-4fa6-4889-a43b-9cda3c737078"
+    ],
+    "hypertension_patients": []
+  },
+  "summary": {
+    "total_checks": 10,
+    "passed_checks": 8,
+    "all_passed": false
+  }
+}
