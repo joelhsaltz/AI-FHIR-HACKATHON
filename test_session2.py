@@ -9,7 +9,9 @@ import requests
 from anthropic import Anthropic
 
 # Set API key
-os.environ["ANTHROPIC_API_KEY"] = "your_api_key_here"
+# API key should be set as environment variable before running this test
+if "ANTHROPIC_API_KEY" not in os.environ:
+    raise ValueError("Please set ANTHROPIC_API_KEY environment variable")
 
 FHIR_BASE = "https://launch.smarthealthit.org/v/r4/fhir"
 MODEL = "claude-3-5-sonnet-20240620"

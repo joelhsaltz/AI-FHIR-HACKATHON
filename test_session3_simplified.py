@@ -10,7 +10,9 @@ from anthropic import Anthropic
 
 FHIR_BASE = "https://launch.smarthealthit.org/v/r4/fhir"
 MODEL = "claude-sonnet-4-20250514"
-API_KEY = "your_api_key_here"
+API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+if not API_KEY:
+    raise ValueError("Please set ANTHROPIC_API_KEY environment variable")
 
 print("="*70)
 print("SIMPLIFIED SESSION 3 TEST (Anthropic-only)")
