@@ -131,6 +131,7 @@ python test_session3_simplified.py
 
 ### Session 1: FHIR Fundamentals (1 hour)
 **Materials:** `session1_student.ipynb`, `pre_session1_orientation.pdf`
+**Backup:** `session1_backup.ipynb` (if SMART FHIR server is down)
 
 **What students do:**
 - Learn FHIR resource structure
@@ -167,7 +168,7 @@ python test_session3_simplified.py
 ## 🏥 Clinical Scenario
 
 **Primary Question:**
-> "Find patients with Type 2 diabetes, retrieve their most recent HbA1c values, and identify those with poor glycemic control (HbA1c > 7.5%)."
+> "Find patients with Type 2 diabetes, retrieve their most recent HbA1c values, and identify those with poor glycemic control (HbA1c > 7.0%)."
 
 ### Clinical Codes Used
 
@@ -183,7 +184,9 @@ python test_session3_simplified.py
 - **< 5.7%**: Normal
 - **5.7% – 6.4%**: Prediabetes
 - **≥ 6.5%**: Diabetes
-- **> 7.5%**: Poor glycemic control (needs intervention)
+- **> 7.0%**: Poor glycemic control (needs intervention)
+
+**Note:** We use > 7.0% because the Synthea-generated data on this server skews toward lower HbA1c values. In clinical practice, thresholds vary by guideline (commonly 7.0%–9.0%).
 
 **Note:** The FHIR server uses **SNOMED CT** for conditions, not ICD-10.
 
@@ -199,6 +202,7 @@ fhir-hackathon/
 │
 ├── notebooks/                         # Student materials
 │   ├── session1_student.ipynb         # Session 1: Manual FHIR queries
+│   ├── session1_backup.ipynb          # Session 1: Backup (local FHIR server)
 │   ├── session2_student.ipynb         # Session 2: Agent observation
 │   └── session3_student.ipynb         # Session 3: Open-ended exploration
 │
@@ -287,7 +291,7 @@ python test_session3_simplified.py
 
 ### Expected Results
 
-- **Session 1**: Finds 20 patients with Type 2 diabetes
+- **Session 1**: Finds 30 patients with Type 2 diabetes
 - **Session 2**: Agent makes ~26 tool calls, identifies patients with poor control
 - **Session 3**: Agent makes 4+ tool calls, generates comprehensive patient profiles
 
@@ -302,7 +306,7 @@ python validate_fhir_server.py
 - ✅ Type 2 Diabetes patients found (20+)
 - ✅ Patient demographics fetchable
 - ✅ HbA1c observations available
-- ✅ HbA1c > 7.5% found (1+ patients)
+- ✅ HbA1c > 7.0% found (1+ patients)
 - ✅ Medications available
 - ✅ Encounters available
 - ✅ Multiple conditions per patient
@@ -374,6 +378,8 @@ python grading/grade_session3.py submissions/
 - FHIR R4 compliant
 - Synthea-generated synthetic data
 - ~100+ patients with various conditions
+
+**Backup:** If the SMART server is unavailable, use `session1_backup.ipynb` which runs a local Flask-based FHIR server with 30 cached Synthea patients embedded directly in the notebook. Students write identical code — only `FHIR_BASE` changes to `localhost:5050`.
 
 **API Examples:**
 

@@ -38,7 +38,7 @@ python validate_fhir_server.py
 - ✅ Server reachable
 - ✅ Type 2 Diabetes patients found
 - ✅ HbA1c data available
-- ✅ HbA1c > 7.5% patients found
+- ✅ HbA1c > 7.0% patients found
 - ⚠️ Hypertension code returns 0 (known issue)
 - ⚠️ Creatinine sparse in dataset (known issue)
 
@@ -77,7 +77,7 @@ python tests/test_session3_simplified.py
 ### Day Of
 - [ ] Share student materials folder
 - [ ] Explain Colab Secrets setup
-- [ ] Have backup FHIR queries ready
+- [ ] Have `session1_backup.ipynb` ready in case SMART server is down
 - [ ] Monitor for FHIR server issues
 
 ## 🎓 Session Guidelines
@@ -100,6 +100,7 @@ python tests/test_session3_simplified.py
 - Not extracting patient IDs from references
 - Confusion about Bundle vs Resource
 - Empty HbA1c results for some patients (expected)
+- FHIR server returning 500/502 errors (switch to `session1_backup.ipynb`)
 
 ### Session 2 (1 hour) - AI Agents
 **Timing:**
@@ -142,15 +143,15 @@ python tests/test_session3_simplified.py
 ## 📊 Expected Test Results
 
 ### Session 1
-- Finds 20 patients with Type 2 diabetes
+- Finds 30 patients with Type 2 diabetes
 - Retrieves demographics for all
 - Gets HbA1c for most patients
-- Some patients have HbA1c > 7.5%
+- Some patients have HbA1c > 7.0%
 
 ### Session 2
 - Agent makes 20-30 tool calls
 - Finds patients with poor control
-- May identify historical data (HbA1c > 7.5% in past)
+- May identify historical data (HbA1c > 7.0% in past)
 - No hallucinations in final answer
 
 ### Session 3
@@ -167,7 +168,7 @@ python tests/test_session3_simplified.py
 - **Some patient IDs return 410**: Server cleanup, normal behavior
 
 ### Agent Behavior
-- **No patients with HbA1c > 9%**: Why we use 7.5% threshold
+- **No patients with HbA1c > 9%**: Why we use 7.0% threshold (Synthea data skews low)
 - **Agent may be verbose**: Expected with detailed queries
 - **Tool call order varies**: Non-deterministic, all valid
 
@@ -208,6 +209,14 @@ curl https://launch.smarthealthit.org/v/r4/fhir/metadata
 # If down, use alternate:
 curl https://r4.smarthealthit.org/metadata
 ```
+
+**If the SMART server is completely down:** Have students switch to
+`session1_backup.ipynb`. This notebook runs a local Flask-based FHIR server
+inside the notebook with 30 cached Synthea patients (Type 2 Diabetes cohort).
+Students write identical `requests.get()` code — the only difference is
+`FHIR_BASE` points to `http://localhost:5050`. No internet required for the
+FHIR queries. The backup produces the same 5 patients with poor glycemic
+control (>7.0% HbA1c).
 
 ### API Key Not Working
 ```bash

@@ -6,6 +6,7 @@ Welcome! This folder contains everything you need for the three-session hackatho
 
 ### Notebooks
 - `session1_student.ipynb` - FHIR Fundamentals (manual queries)
+- `session1_backup.ipynb` - Session 1 Backup (uses local FHIR server — use this if the SMART server is down)
 - `session2_student.ipynb` - AI Agent Basics (observe tool use)
 - `session3_student.ipynb` - Open-Ended Exploration (your turn!)
 
@@ -21,6 +22,10 @@ Welcome! This folder contains everything you need for the three-session hackatho
 2. Upload to [Google Colab](https://colab.research.google.com/)
 3. Follow the instructions in the notebook
 4. Use Claude web UI to generate code
+
+> **FHIR server not responding?** Use `session1_backup.ipynb` instead. It runs
+> a local FHIR server inside the notebook with cached patient data. Your code
+> will be identical — the only difference is `FHIR_BASE` points to `localhost`.
 
 ### For Sessions 2 & 3 (API Key Required)
 1. Download the session notebook
@@ -44,12 +49,12 @@ Welcome! This folder contains everything you need for the three-session hackatho
 ## 🏥 Clinical Scenario
 
 **Main Question:**
-> "Find patients with Type 2 diabetes, retrieve their most recent HbA1c values, and identify those with poor glycemic control (HbA1c > 7.5%)."
+> "Find patients with Type 2 diabetes, retrieve their most recent HbA1c values, and identify those with poor glycemic control (HbA1c > 7.0%)."
 
 **Important Codes:**
 - **Type 2 Diabetes:** SNOMED CT `44054006` (not ICD-10 E11!)
 - **HbA1c:** LOINC `4548-4`
-- **Poor Control:** HbA1c > 7.5%
+- **Poor Control:** HbA1c > 7.0%
 
 **FHIR Server:** `https://launch.smarthealthit.org/v/r4/fhir`
 
