@@ -194,7 +194,7 @@ class TestSession2:
         """Full agent run: diabetes + HbA1c question with 3 tools."""
         question = (
             "Find patients with Type 2 diabetes and their most recent HbA1c values. "
-            "Which patients have poor glycemic control (HbA1c > 7.5%)?"
+            "Which patients have poor glycemic control (HbA1c > 7.0%)?"
         )
 
         answer, tool_calls = run_agent(

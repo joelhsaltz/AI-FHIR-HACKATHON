@@ -5,10 +5,9 @@ This folder contains all testing, validation, and instructor resources.
 ## 📁 What's in This Folder
 
 ### Tests Directory (`tests/`)
-- `test_session1.py` - Validates Session 1 notebook functionality
-- `test_session2_simplified.py` - Tests Session 2 agent (3 tools)
-- `test_session3_simplified.py` - Tests Session 3 agent (6 tools)
-- `test_session2.py` - Alternative Session 2 test
+- `test_all_notebooks.py` - Unified test suite for all 3 sessions (TestSession1, TestSession2, TestSession3)
+- `conftest.py` - Shared fixtures, FHIR tool functions, agent loop helper, and tool schemas
+- `run_tests.py` - Convenience runner with session selection and API key prompting
 
 ### Validation Files
 - `validate_fhir_server.py` - Comprehensive FHIR server validation
@@ -45,14 +44,25 @@ python validate_fhir_server.py
 ### 3. Run All Tests
 
 ```bash
-# Session 1: Manual FHIR queries
-python tests/test_session1.py
+# All sessions (will prompt for API key if not set)
+python tests/run_tests.py
 
-# Session 2: Agent with 3 tools
-python tests/test_session2_simplified.py
+# Session 1 only (no API key needed)
+python tests/run_tests.py --session 1
 
-# Session 3: Agent with 6 tools
-python tests/test_session3_simplified.py
+# Session 2 only (requires ANTHROPIC_API_KEY)
+python tests/run_tests.py --session 2
+
+# Session 3 only (requires ANTHROPIC_API_KEY)
+python tests/run_tests.py --session 3
+
+# Skip API-dependent tests
+python tests/run_tests.py --no-api
+
+# Or use pytest directly:
+pytest tests/test_all_notebooks.py -v                     # all tests
+pytest tests/test_all_notebooks.py::TestSession1 -v       # session 1 only
+pytest tests/test_all_notebooks.py -k "not requires_api_key" -v  # skip API tests
 ```
 
 **All tests should PASS** ✅
@@ -233,7 +243,8 @@ python validate_fhir_server.py
 # Check API key is set
 echo $ANTHROPIC_API_KEY
 
-# Run tests individually to isolate issue
+# Run Session 1 tests only (no API key needed) to isolate FHIR server issues
+python tests/run_tests.py --session 1
 ```
 
 ## 📚 Additional Resources
