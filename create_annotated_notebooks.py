@@ -2,9 +2,9 @@
 """
 Create annotated versions of the FHIR Hackathon instructor notebooks.
 
-Reads each original .ipynb, inserts 8 new markdown annotation cells at
-specified positions, and writes the annotated copy. Original notebooks
-are not modified.
+Reads each original .ipynb, inserts annotation cells (8 each for Sessions 1
+and 2, 9 for Session 3) at specified positions, and writes the annotated copy.
+Original notebooks are not modified.
 
 Usage:
     python create_annotated_notebooks.py
@@ -623,6 +623,50 @@ SESSION_3_ANNOTATIONS = [
         "grow."
     )),
 
+    # C4b: Before cell 10 — "Inside the Agent Loop: How run_agent() Works"
+    (10, (
+        "---\n"
+        "### Inside the Agent Loop: How `run_agent()` Works\n"
+        "\n"
+        "Session 2 introduced the agent loop at a high level: send a question, "
+        "get back a tool call or a final answer, repeat. Now that you have "
+        "watched the loop run and analyzed its trace, here is what the code "
+        "below actually does at each phase. This is the Reason-Act-Observe "
+        "cycle at the implementation level.\n"
+        "\n"
+        "**Initialization.** The function starts by building a `messages` list "
+        "with one entry: the user's clinical question. This list is the agent's "
+        "entire memory — like a running medical chart that accumulates notes "
+        "with every interaction. Nothing persists between calls except what is "
+        "in this list.\n"
+        "\n"
+        "**The decision point.** On each iteration, "
+        "`client.messages.create(model=..., system=system_prompt, tools=tools, "
+        "messages=messages)` sends the full conversation history plus all tool "
+        "schemas to Claude. Claude reads everything and returns a response "
+        "whose `stop_reason` is either `\"tool_use\"` (it wants to call a "
+        "function) or `\"end_turn\"` (it is done reasoning and has a text "
+        "answer).\n"
+        "\n"
+        "**Tool execution.** When `stop_reason` is `\"tool_use\"`, the code "
+        "extracts the function name and arguments from the response, looks up "
+        "the matching Python function in `available_functions[fn_name]`, and "
+        "calls it: `available_functions[fn_name](**fn_args)`. The LLM never "
+        "touches the FHIR server directly — your local code does, and the LLM "
+        "only sees the returned result.\n"
+        "\n"
+        "**Feedback.** The tool's return value is appended to `messages` as a "
+        "`tool_result` content block. On the next iteration, Claude sees the "
+        "original question, every prior tool call and result, and decides what "
+        "to do next — call another tool or produce a final answer.\n"
+        "\n"
+        "**Termination.** The loop exits when Claude responds with text "
+        "instead of a tool request, or when the step counter reaches "
+        "`max_steps`. The `max_steps` guard prevents runaway loops — if the "
+        "agent keeps calling tools without converging on an answer, the loop "
+        "stops and returns whatever it has so far."
+    )),
+
     # C5: Before cell 11 — "How to Formulate Good Clinical Questions"
     (11, (
         "---\n"
@@ -747,7 +791,7 @@ def main():
          SESSION_2_ANNOTATIONS, 24),
         ("session3_instructor.ipynb",
          "session3_instructor_annotated.ipynb",
-         SESSION_3_ANNOTATIONS, 29),
+         SESSION_3_ANNOTATIONS, 30),
     ]
 
     all_ok = True
