@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Removed
+
+- Verification hash (SHA-256 digest) from Session 3 deliverable cell — unnecessary for an informal hackathon and would confuse students. Removed `import hashlib`, hash computation, and hash print line from both `session3_student.ipynb` and `session3_instructor.ipynb`. Updated C7 annotation in `create_annotated_notebooks.py` to remove hash explanation.
+
 ### Added
 
 - Annotated instructor notebooks (`session1_instructor_annotated.ipynb`, `session2_instructor_annotated.ipynb`, `session3_instructor_annotated.ipynb`) with explanatory markdown cells (8 each for Sessions 1-2, 9 for Session 3) bridging clinical and technical concepts for the mixed-background audience.
