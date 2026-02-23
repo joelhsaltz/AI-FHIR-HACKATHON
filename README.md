@@ -319,6 +319,15 @@ python validate_fhir_server.py
 
 ## 👨‍🏫 For Instructors
 
+### Annotated Notebooks
+
+The `instructor_materials/notebooks/` directory includes **annotated** versions of each instructor notebook (`session*_instructor_annotated.ipynb`). These contain 8 additional explanatory markdown cells per session that bridge clinical and technical concepts — useful for instructors who want more built-in context when teaching mixed-background audiences (MDs, CS students, biology students).
+
+To regenerate annotated notebooks after modifying the originals:
+```bash
+python create_annotated_notebooks.py
+```
+
 ### Before the Hackathon
 
 1. **Test all notebooks** with your API key
