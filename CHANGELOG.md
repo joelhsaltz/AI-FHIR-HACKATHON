@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- HbA1c threshold mismatch: changed 7.5% → 7.0% in student-facing materials to match instructor notebooks and project convention. Affected files: `session2_student.ipynb` (3 cells: reference table, prediction question, agent question), `session3_student.ipynb` (1 cell: reference table), `session1_backup.ipynb` (1 cell: clinical scenario). Also added threshold note explaining the Synthea data rationale to student reference tables (matching instructor versions).
+- `validate_fhir_server.py`: updated HbA1c poor control threshold from 7.5% to 7.0% in 4 locations (comment, comparison, check label, summary output) to match project convention.
+
 ### Added
 
 - `CLAUDE.md` — Project context for Claude Code: key files, commands, conventions.

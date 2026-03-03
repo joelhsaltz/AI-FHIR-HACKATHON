@@ -163,11 +163,11 @@ def check_hba1c_observations(result: ValidationResult, patient_ids: List[str]) -
                 if entries:
                     patients_with_hba1c.append(patient_id)
 
-                    # Check for values > 7.5
+                    # Check for values > 7.0
                     for entry in entries:
                         obs = entry.get("resource", {})
                         value = obs.get("valueQuantity", {}).get("value")
-                        if value and float(value) > 7.5:
+                        if value and float(value) > 7.0:
                             patients_poor_control.append(patient_id)
                             break
         except:
@@ -181,7 +181,7 @@ def check_hba1c_observations(result: ValidationResult, patient_ids: List[str]) -
     )
 
     result.add_check(
-        "HbA1c values > 7.5% found",
+        "HbA1c values > 7.0% found",
         len(patients_poor_control) > 0,
         f"{len(patients_poor_control)} patients with poor control"
     )
@@ -464,7 +464,7 @@ def main():
             print(f"  - {pid}")
 
     if hba1c_data["poor_control"]:
-        print(f"\nPatient IDs with HbA1c > 7.5% (poor control):")
+        print(f"\nPatient IDs with HbA1c > 7.0% (poor control):")
         for pid in hba1c_data["poor_control"][:5]:
             print(f"  - {pid}")
 
