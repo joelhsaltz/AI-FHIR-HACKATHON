@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **V3 notebooks** — complete content rewrite targeting SBU LinuxForHealth FHIR
+  server with 1,027 phenotype-structured synthetic patients across 6 clinical
+  groups. 6 new notebooks: `session{1,2,3}_{student,instructor}_v3.ipynb`.
+- `create_v3_notebooks.py` — generates all 6 v3 notebooks from scratch (unlike
+  v2 which patched v1 cells, v3 constructs entirely new content).
+- **Session 1 v3:** Expanded to HbA1c + creatinine + eGFR (from HbA1c only).
+  Adds scatter plot visualization of glycemic control vs kidney function.
+- **Session 2 v3:** 5 tools (from 3), adds `search_medications` and
+  `search_all_conditions`. Hardcoded agent question investigating Type 2
+  diabetes control, medications, and renal function. Post-agent visualization
+  with scatter plot and medication frequency bar chart. `max_steps=25`.
+- **Session 3 v3:** 7 tools (adds `search_encounters`, `search_patients`).
+  Focus on Type 1 vs Type 2 diabetes comparisons. Pre-built C-peptide vs
+  HbA1c comparison plot. Structured question suggestions by difficulty.
+- All v3 notebooks: phenotype population description, expanded clinical code
+  reference with 14 LOINC codes and interpretation thresholds, matplotlib
+  visualizations, hardcoded FHIR credentials (synthetic teaching data),
+  HbA1c poor control threshold at >7.5%.
+- Type 1 vs Type 2 diabetes comparison guide in Session 3 explaining
+  C-peptide as the key differentiating lab.
+
 ### Fixed
 
 - HbA1c threshold mismatch: changed 7.5% → 7.0% in student-facing materials to match instructor notebooks and project convention. Affected files: `session2_student.ipynb` (3 cells: reference table, prediction question, agent question), `session3_student.ipynb` (1 cell: reference table), `session1_backup.ipynb` (1 cell: clinical scenario). Also added threshold note explaining the Synthea data rationale to student reference tables (matching instructor versions).
