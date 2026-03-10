@@ -11,16 +11,18 @@ AI agent patterns with Claude.
 ```
 fhir-hackathon/
 ├── student_materials/
-│   ├── notebooks/          # Student-facing Jupyter notebooks (Sessions 1-3)
-│   │   ├── session1_student.ipynb
-│   │   ├── session1_backup.ipynb   # Local Flask FHIR fallback
-│   │   ├── session2_student.ipynb
-│   │   └── session3_student.ipynb
+│   ├── notebooks/          # Student-facing Jupyter notebooks
+│   │   ├── session{1,2,3}_student.ipynb      # v1 (public SMART sandbox)
+│   │   ├── session{1,2,3}_student_v2.ipynb   # v2 (SBU server, auth patched)
+│   │   ├── session{1,2,3}_student_v3.ipynb   # v3 (SBU server, full rewrite)
+│   │   └── session1_backup.ipynb              # Local Flask FHIR fallback
 │   ├── orientation_pdfs/   # Pre-session slide decks
 │   └── README_FOR_STUDENTS.md
 ├── instructor_materials/
 │   ├── notebooks/          # Instructor versions + annotated variants
 │   │   ├── session{1,2,3}_instructor.ipynb
+│   │   ├── session{1,2,3}_instructor_v2.ipynb
+│   │   ├── session{1,2,3}_instructor_v3.ipynb
 │   │   ├── session{1,2,3}_instructor_annotated.ipynb
 │   │   └── session1_backup_instructor.ipynb
 │   ├── tests/              # Notebook validation tests
@@ -31,6 +33,8 @@ fhir-hackathon/
 │   ├── fhir_hackathon_claude_code_spec.md   # Original build spec (historical)
 │   └── SIMPLIFICATION_SUMMARY.md
 ├── create_annotated_notebooks.py   # Generates annotated instructor notebooks
+├── create_v2_notebooks.py          # Generates v2 notebooks (auth patching)
+├── create_v3_notebooks.py          # Generates v3 notebooks (full rewrite)
 ├── README.md
 ├── CHANGELOG.md
 ├── SPEC.md
@@ -41,9 +45,12 @@ fhir-hackathon/
 ## Key Commands
 
 ```bash
-# Regenerate annotated instructor notebooks after editing source notebooks
+# Generate v3 notebooks (SBU server, full rewrite)
+python create_v3_notebooks.py
+# Expected: S1: 21 cells, S2: 19 cells, S3: 24 cells (x2 student+instructor)
+
+# Regenerate annotated instructor notebooks (v1 only)
 python create_annotated_notebooks.py
-# Expected output: Session 1: 27 cells, Session 2: 24 cells, Session 3: 30 cells
 
 # Validate FHIR server connectivity and data availability
 python instructor_materials/validate_fhir_server.py
@@ -56,9 +63,10 @@ cd instructor_materials/tests && python run_tests.py
 
 | File | Purpose |
 |------|---------|
-| `student_materials/notebooks/session3_student.ipynb` | Session 3 student notebook (deliverable cell here) |
-| `instructor_materials/notebooks/session3_instructor.ipynb` | Session 3 instructor version |
-| `create_annotated_notebooks.py` | Inserts annotation markdown cells into instructor notebooks |
+| `student_materials/notebooks/session{1,2,3}_student_v3.ipynb` | V3 student notebooks (current) |
+| `instructor_materials/notebooks/session{1,2,3}_instructor_v3.ipynb` | V3 instructor notebooks (current) |
+| `create_v3_notebooks.py` | Generates all 6 v3 notebooks from scratch |
+| `create_annotated_notebooks.py` | Inserts annotation cells into v1 instructor notebooks |
 | `CHANGELOG.md` | All changes documented here |
 
 ## Conventions
@@ -68,11 +76,17 @@ cd instructor_materials/tests && python run_tests.py
 - **Annotated notebooks are generated, not hand-edited.** Always edit
   `create_annotated_notebooks.py` and re-run, never edit the `_annotated.ipynb`
   files directly.
-- **FHIR server** — Public sandbox at `https://launch.smarthealthit.org/v/r4/fhir`,
-  no auth required. Uses SNOMED CT codes for conditions (not ICD-10).
+- **FHIR server (v3)** — SBU LinuxForHealth at
+  `https://lfh-fhir.eastus2.cloudapp.azure.com:9443/fhir-server/api/v4`,
+  Basic Auth (`fhiruser`/`BmI512@ccess`), self-signed cert. 1,027 synthetic
+  patients across 6 phenotypes.
+- **FHIR server (v1/v2)** — Public SMART sandbox, no auth required.
 - **LLM** — Anthropic Claude only (`claude-sonnet-4-20250514`). No dual-provider
   abstraction.
-- **HbA1c threshold** — >7.0% for "poor control" (Synthea data skews low).
+- **HbA1c threshold (v3)** — >7.5% for "poor control" (richer synthetic data).
+- **HbA1c threshold (v1/v2)** — >7.0% for "poor control" (Synthea data skews low).
+- **V3 notebooks are generated, not hand-edited.** Always edit
+  `create_v3_notebooks.py` and re-run.
 
 ## Git Workflow
 
