@@ -27,6 +27,9 @@ credentials.json
 # Exports
 notebooklm_export/
 
+# Large PDFs (stored outside repo)
+Notebook LM talks/*.pdf
+
 # Temporary files
 *.tmp
 *.log
