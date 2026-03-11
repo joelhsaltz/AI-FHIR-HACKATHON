@@ -5,11 +5,23 @@ import json
 import time
 import pytest
 import requests
+import urllib3
 
-FHIR_BASE = "https://launch.smarthealthit.org/v/r4/fhir"
+# Suppress InsecureRequestWarning for self-signed SSL cert
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+FHIR_BASE = "https://lfh-fhir.eastus2.cloudapp.azure.com:9443/fhir-server/api/v4"
 MODEL = "claude-sonnet-4-20250514"
 
-# Retry settings for the public FHIR test server (intermittent 500/502 errors)
+# ---- FHIR Auth (SBU IBM FHIR Server — self-signed cert, Basic Auth) ----
+FHIR_USERNAME = os.environ.get("FHIR_USERNAME", "fhiruser")
+FHIR_PASSWORD = os.environ.get("FHIR_PASSWORD", "BmI512@ccess")
+
+_FHIR_SESSION = requests.Session()
+_FHIR_SESSION.auth = (FHIR_USERNAME, FHIR_PASSWORD)
+_FHIR_SESSION.verify = False
+
+# Retry settings for the FHIR server
 MAX_RETRIES = 3
 RETRY_DELAY = 5  # seconds
 
@@ -38,7 +50,7 @@ def pytest_collection_modifyitems(config, items):
 def fhir_get(url, params=None, timeout=15):
     """GET with retries for transient FHIR server errors."""
     for attempt in range(MAX_RETRIES):
-        resp = requests.get(url, params=params, timeout=timeout)
+        resp = _FHIR_SESSION.get(url, params=params, timeout=timeout)
         if resp.status_code < 500:
             return resp
         if attempt < MAX_RETRIES - 1:
@@ -137,10 +149,12 @@ def search_medications(patient_id: str, max_results: int = 10) -> dict:
     results = []
     for entry in bundle.get("entry", []):
         r = entry["resource"]
-        med = r.get("medicationCodeableConcept", {}).get("coding", [{}])[0]
+        med_concept = r.get("medicationCodeableConcept", {})
+        coding = med_concept.get("coding", [{}])[0] if med_concept.get("coding") else {}
+        med_name = coding.get("display") or med_concept.get("text", "unknown")
         results.append({
-            "medication": med.get("display", "unknown"),
-            "code": med.get("code", ""),
+            "medication": med_name,
+            "code": coding.get("code", ""),
             "status": r.get("status", "unknown"),
             "authored_on": r.get("authoredOn", "unknown")
         })
