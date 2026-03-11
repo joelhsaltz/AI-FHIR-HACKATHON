@@ -88,6 +88,23 @@ cd instructor_materials/tests && python run_tests.py
 - **V3 notebooks are generated, not hand-edited.** Always edit
   `create_v3_notebooks.py` and re-run.
 
+## Notebook Debugging Strategy
+
+When debugging notebooks end-to-end, do NOT use `nbconvert --execute` (too slow,
+no incremental feedback, hangs on `input()` calls). Instead:
+
+1. Create a temporary harness script (e.g., `debug_sessionN.py`) that:
+   - Extracts code cells from the notebook in order
+   - Runs each cell in a shared namespace via `exec()`
+   - Reports PASS/FAIL with timing after each cell
+   - Caps agent `max_steps` at 5 (enough to verify the loop works)
+   - Mocks `input()` calls with test values
+   - Uses per-cell timeouts (180s for agent cells, 60s for others)
+   - Fails fast if setup/connectivity cells fail
+2. Run the harness and report results per cell group
+3. Fix errors in the generator script (not the notebook directly), regenerate, re-run
+4. Clean up the harness script when done
+
 ## Git Workflow
 
 Follow the governance rules in `~/.claude/CLAUDE.md`:
