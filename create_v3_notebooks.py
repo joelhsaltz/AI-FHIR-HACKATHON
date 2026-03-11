@@ -263,6 +263,8 @@ SETUP_S23_PIP = """\
 !pip install anthropic requests pandas matplotlib"""
 
 SETUP_S23 = f"""\
+!pip install -q anthropic requests pandas matplotlib
+
 import os, json, requests, urllib3
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -718,8 +720,8 @@ print(f"\\u2705 {len(tools)} tools registered: {[t['name'] for t in tools]}")"""
 
 # ── System prompts ───────────────────────────────────────────
 
-SYSTEM_PROMPT_S2 = r"""
-SYSTEM_PROMPT = \"\"\"You are a clinical data assistant with access to a FHIR \
+SYSTEM_PROMPT_S2 = r'''
+SYSTEM_PROMPT = """You are a clinical data assistant with access to a FHIR \
 server containing synthetic patient records.
 
 PATIENT POPULATION: The server has approximately 1,027 patients across 6 \
@@ -773,11 +775,11 @@ RULES:
 - Show actual lab values, not just categories.
 - When comparing groups, provide counts and specific values.
 - Be thorough: check all relevant patients, not just the first few.
-\"\"\"
 """
+'''
 
-SYSTEM_PROMPT_S3 = r"""
-SYSTEM_PROMPT = \"\"\"You are a clinical data assistant with access to a FHIR \
+SYSTEM_PROMPT_S3 = r'''
+SYSTEM_PROMPT = """You are a clinical data assistant with access to a FHIR \
 server containing synthetic patient records.
 
 PATIENT POPULATION: The server has approximately 1,027 patients across 6 \
@@ -838,15 +840,15 @@ RULES:
 - Show actual lab values, not just categories.
 - When comparing groups, provide counts and specific values.
 - Be thorough: check all relevant patients, not just the first few.
-\"\"\"
 """
+'''
 
 # ── Agent loop ───────────────────────────────────────────────
 
-AGENT_LOOP = r"""
+AGENT_LOOP = r'''
 def run_agent(question, system_prompt=SYSTEM_PROMPT, tools=tools,
               available_functions=available_functions, max_steps=25):
-    \"\"\"Run the tool-use agent loop.\"\"\"
+    """Run the tool-use agent loop."""
     print(f"\U0001f916 AGENT QUESTION: {question}\n")
     print("=" * 70)
 
@@ -922,7 +924,7 @@ def run_agent(question, system_prompt=SYSTEM_PROMPT, tools=tools,
 
     print(f"\n\u26a0\ufe0f Reached max steps ({max_steps})")
     return "Agent reached step limit.", tool_calls_log, messages
-"""
+'''
 
 # ── Trace display code ───────────────────────────────────────
 
@@ -1029,6 +1031,7 @@ S2_VISUALIZATION = r"""
 # ══════════════════════════════════════════════════════════════
 # We call the same tool functions the agent used, but collect the results
 # into DataFrames for plotting.
+import time
 
 # Step 1: Get Type 2 diabetes patients
 t2d_conditions = search_conditions("44054006", max_results=50)
@@ -1042,10 +1045,17 @@ print(f"Type 2 diabetes patients found: {len(t2d_patient_ids)}")
 rows = []
 all_meds = []
 for pid in t2d_patient_ids:
-    patient = get_patient(pid)
-    hba1c = search_observations(pid, "4548-4", max_results=1)
-    egfr = search_observations(pid, "33914-3", max_results=1)
-    meds = search_medications(pid, max_results=10)
+    try:
+        patient = get_patient(pid)
+        hba1c = search_observations(pid, "4548-4", max_results=1)
+        egfr = search_observations(pid, "33914-3", max_results=1)
+        meds = search_medications(pid, max_results=10)
+    except Exception:
+        time.sleep(3)
+        patient = get_patient(pid)
+        hba1c = search_observations(pid, "4548-4", max_results=1)
+        egfr = search_observations(pid, "33914-3", max_results=1)
+        meds = search_medications(pid, max_results=10)
 
     hba1c_val = hba1c["results"][0]["value"] if hba1c["results"] else None
     egfr_val = egfr["results"][0]["value"] if egfr["results"] else None
@@ -1059,6 +1069,7 @@ for pid in t2d_patient_ids:
 
     for m in meds.get("results", []):
         all_meds.append({"patient_id": pid, "medication": m["medication"]})
+    time.sleep(0.3)  # Brief pause between patients to avoid server overload
 
 df = pd.DataFrame(rows)
 df["hba1c"] = pd.to_numeric(df["hba1c"], errors="coerce")
@@ -1111,12 +1122,13 @@ S3_COMPARISON_PLOT = r"""
 # ══════════════════════════════════════════════════════════════
 # This cell queries both diabetes groups and plots C-peptide vs HbA1c
 # to visualize the key biochemical difference between them.
+import time
 
-# Fetch both groups
-t2d = search_conditions("44054006", max_results=50)
+# Fetch both groups (limit to 10 per group for speed — enough to see the pattern)
+t2d = search_conditions("44054006", max_results=10)
 t2d_ids = list(set(r["patient_reference"].split("/")[-1] for r in t2d["results"]))
 
-t1d = search_conditions("46635009", max_results=50)
+t1d = search_conditions("46635009", max_results=10)
 t1d_ids = list(set(r["patient_reference"].split("/")[-1] for r in t1d["results"]))
 
 print(f"Type 2 diabetes patients: {len(t2d_ids)}")
@@ -1126,8 +1138,16 @@ print(f"Type 1 diabetes patients: {len(t1d_ids)}")
 rows = []
 for diabetes_type, patient_ids in [("Type 2", t2d_ids), ("Type 1", t1d_ids)]:
     for pid in patient_ids:
-        hba1c = search_observations(pid, "4548-4", max_results=1)
-        cpeptide = search_observations(pid, "1986-9", max_results=1)
+        try:
+            hba1c = search_observations(pid, "4548-4", max_results=1)
+        except Exception:
+            time.sleep(2)
+            hba1c = search_observations(pid, "4548-4", max_results=1)
+        try:
+            cpeptide = search_observations(pid, "1986-9", max_results=1)
+        except Exception:
+            time.sleep(2)
+            cpeptide = search_observations(pid, "1986-9", max_results=1)
         rows.append({
             "patient_id": pid,
             "diabetes_type": diabetes_type,
@@ -1480,7 +1500,59 @@ def session1_cells(instructor=False):
     else:
         cells.append(code_cell("# Paste Claude's code here and run it\n"))
 
-    # 17: Analysis
+    # 17: Observations verification
+    cells.append(code_cell(
+        '# ---- Verification: Lab observations ----\n'
+        'try:\n'
+        '    assert len(observations) > 0, "observations list is empty"\n'
+        '    print(f"\\u2705 {len(observations)} observation records loaded")\n'
+        '    df_obs_check = pd.DataFrame(observations)\n'
+        '    print(f"   Tests found: {df_obs_check[\'test\'].unique().tolist()}")\n'
+        'except (NameError, AssertionError) as e:\n'
+        '    print(f"\\u26a0\\ufe0f Issue: {e}")\n'
+        '    print("Running fallback observation queries...")\n'
+        '    observations = []\n'
+        '    loinc_codes = {"4548-4": "HbA1c", "2160-0": "Creatinine", "33914-3": "eGFR"}\n'
+        '    for ref in sorted(patient_refs):\n'
+        '        patient_id = ref.split("/")[-1]\n'
+        '        for code, name in loinc_codes.items():\n'
+        '            resp = FHIR_SESSION.get(\n'
+        '                f"{FHIR_BASE}/Observation",\n'
+        '                params={\n'
+        '                    "subject": f"Patient/{patient_id}",\n'
+        '                    "code": code,\n'
+        '                    "_count": 1,\n'
+        '                    "_sort": "-date",\n'
+        '                    "_format": "json",\n'
+        '                },\n'
+        '                timeout=30,\n'
+        '            )\n'
+        '            bundle = resp.json()\n'
+        '            entries = bundle.get("entry", [])\n'
+        '            if entries:\n'
+        '                obs = entries[0]["resource"]\n'
+        '                value_qty = obs.get("valueQuantity", {})\n'
+        '                observations.append({\n'
+        '                    "patient_id": patient_id,\n'
+        '                    "test": name,\n'
+        '                    "loinc_code": code,\n'
+        '                    "value": value_qty.get("value"),\n'
+        '                    "unit": value_qty.get("unit", ""),\n'
+        '                    "date": obs.get("effectiveDateTime", ""),\n'
+        '                })\n'
+        '            else:\n'
+        '                observations.append({\n'
+        '                    "patient_id": patient_id,\n'
+        '                    "test": name,\n'
+        '                    "loinc_code": code,\n'
+        '                    "value": None,\n'
+        '                    "unit": "",\n'
+        '                    "date": "",\n'
+        '                })\n'
+        '    print(f"\\u2705 Fallback retrieved {len(observations)} observation records")'
+    ))
+
+    # 18: Analysis
     cells.append(code_cell(
         '# ══════════════════════════════════════════════════════════════\n'
         '# COMBINED ANALYSIS\n'
@@ -1520,10 +1592,10 @@ def session1_cells(instructor=False):
         'print(f"\\nPatients with BOTH poor control AND impaired kidneys: {df_combined[\'both_flags\'].sum()}")'
     ))
 
-    # 18: Visualization
+    # 19: Visualization
     cells.append(code_cell(S1_VISUALIZATION))
 
-    # 19: Step 4 prompt
+    # 20: Step 4 prompt
     cells.append(md_cell(
         "## Step 4: Generate a Clinical Summary\n\n"
         "Go back to **claude.ai** and ask Claude to write a clinical "
@@ -1537,7 +1609,7 @@ def session1_cells(instructor=False):
         "Paste the summary below."
     ))
 
-    # 20: Clinical summary paste area
+    # 21: Clinical summary paste area
     if instructor:
         cells.append(md_cell(
             "### Sample Clinical Summary (Instructor Reference)\n\n"
@@ -1563,7 +1635,7 @@ def session1_cells(instructor=False):
             "*Paste Claude's clinical summary here.*\n"
         ))
 
-    # 21: Reflection
+    # 22: Reflection
     cells.append(md_cell(
         "## Session 1 Reflection\n\n"
         "You just built a complete clinical data pipeline:\n\n"
@@ -1622,10 +1694,7 @@ def session2_cells(instructor=False):
     # 3: Clinical code reference
     cells.append(md_cell(CLINICAL_CODE_REFERENCE))
 
-    # 4: pip install
-    cells.append(code_cell(SETUP_S23_PIP))
-
-    # 5: Setup
+    # 4: Setup (includes pip install)
     cells.append(code_cell(SETUP_S23))
 
     # 6: Tool functions + smoke tests
@@ -1809,13 +1878,10 @@ def session3_cells(instructor=False):
     # 4: T1 vs T2 comparison guide
     cells.append(md_cell(T1_VS_T2_COMPARISON))
 
-    # 5: pip install
-    cells.append(code_cell(SETUP_S23_PIP))
-
-    # 6: Setup
+    # 5: Setup (includes pip install)
     cells.append(code_cell(SETUP_S23))
 
-    # 7: 5 base tool functions
+    # 6: 5 base tool functions
     cells.append(code_cell(TOOL_FUNCTIONS_5))
 
     # 8: 2 additional tools
@@ -1878,11 +1944,18 @@ def session3_cells(instructor=False):
     ))
 
     # 15: Question 1 run
-    cells.append(code_cell(
-        'user_question_1 = ""\n'
-        '# ^^^ Fill in your question above ^^^\n\n'
-        'answer_1, tool_calls_1, messages_1 = run_agent(user_question_1)'
-    ))
+    if instructor:
+        cells.append(code_cell(
+            'user_question_1 = "Compare HbA1c levels between Type 1 and Type 2 diabetes '\
+            'patients. Which group has worse glycemic control?"\n\n'
+            'answer_1, tool_calls_1, messages_1 = run_agent(user_question_1)'
+        ))
+    else:
+        cells.append(code_cell(
+            'user_question_1 = ""\n'
+            '# ^^^ Fill in your question above ^^^\n\n'
+            'answer_1, tool_calls_1, messages_1 = run_agent(user_question_1)'
+        ))
 
     # 16: Question 1 trace
     cells.append(code_cell(
@@ -1901,11 +1974,18 @@ def session3_cells(instructor=False):
     ))
 
     # 18: Question 2 run
-    cells.append(code_cell(
-        'user_question_2 = ""\n'
-        '# ^^^ Fill in your question above ^^^\n\n'
-        'answer_2, tool_calls_2, messages_2 = run_agent(user_question_2)'
-    ))
+    if instructor:
+        cells.append(code_cell(
+            'user_question_2 = "Compare C-peptide levels between Type 1 and Type 2 diabetes '\
+            'patients. How do they differ and why?"\n\n'
+            'answer_2, tool_calls_2, messages_2 = run_agent(user_question_2)'
+        ))
+    else:
+        cells.append(code_cell(
+            'user_question_2 = ""\n'
+            '# ^^^ Fill in your question above ^^^\n\n'
+            'answer_2, tool_calls_2, messages_2 = run_agent(user_question_2)'
+        ))
 
     # 19: Question 2 trace
     cells.append(code_cell(
