@@ -1,0 +1,41 @@
+FHIR_SERVER_URL=https://lfh-fhir.eastus2.cloudapp.azure.com/fhir-server/api/v4
+   FHIR_USERNAME=fhiruser
+   FHIR_PASSWORD=your_password_here
+   VERIFY_SSL=false
+ 
+# FHIR Server Configuration
+ 
+# FHIR Server Base URL
+FHIR_SERVER_URL=https://lfh-fhir.eastus2.cloudapp.azure.com:9443/fhir-server/api/v4
+ 
+# Basic Authentication Credentials
+FHIR_USERNAME=fhiruser
+FHIR_PASSWORD=BmI512@ccess
+ 
+# Optional Settings
+REQUEST_TIMEOUT=60
+MAX_RETRIES=3
+VERIFY_SSL=false
+ 
+# Logging Level (DEBUG, INFO, WARNING, ERROR)
+LOG_LEVEL=INFO
+ 
+
+
+  Count all Patients:                                                                                          
+  curl -k -u 'fhiruser:BmI512@ccess' \                                                                         
+    -H 'Accept: application/fhir+json' \                                                                       
+    'https://lfh-fhir.eastus2.cloudapp.azure.com:9443/fhir-server/api/v4/Patient?_summary=count'             
+ 
+  Search for patients with diabetes:
+  curl -k -u 'fhiruser:BmI512@ccess' \
+    -H 'Accept: application/fhir+json' \
+    'https://lfh-fhir.eastus2.cloudapp.azure.com:9443/fhir-server/api/v4/Condition?code=73211009&_include=Condi
+  tion:subject'
+ 
+  Notes:
+  - -k disables SSL verification (self-signed cert)
+  - 73211009 is the SNOMED CT code for Diabetes mellitus
+  - The _include=Condition:subject pulls back the referenced Patient resources along with the matching
+  Conditions
+  - If you just want the count of diabetes conditions, append &_summary=count and drop the _include
