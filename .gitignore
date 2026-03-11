@@ -24,6 +24,9 @@ venv/
 *_key.txt
 credentials.json
 
+# Exports
+notebooklm_export/
+
 # Temporary files
 *.tmp
 *.log

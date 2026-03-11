@@ -1,16 +1,29 @@
 #!/usr/bin/env python3
 """
 FHIR Server Validation Script
-Validates that https://launch.smarthealthit.org/v/r4/fhir has all required data
+Validates that the SBU IBM FHIR Server has all required data
 for the FHIR + AI Hackathon.
 """
 
+import os
 import requests
+import urllib3
 import json
 from datetime import datetime
 from typing import Dict, List, Any
 
-FHIR_BASE = "https://launch.smarthealthit.org/v/r4/fhir"
+# Suppress InsecureRequestWarning for self-signed SSL cert
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+FHIR_BASE = "https://lfh-fhir.eastus2.cloudapp.azure.com:9443/fhir-server/api/v4"
+
+# ---- FHIR Auth (SBU IBM FHIR Server — self-signed cert, Basic Auth) ----
+FHIR_USERNAME = os.environ.get("FHIR_USERNAME", "fhiruser")
+FHIR_PASSWORD = os.environ.get("FHIR_PASSWORD", "BmI512@ccess")
+
+FHIR_SESSION = requests.Session()
+FHIR_SESSION.auth = (FHIR_USERNAME, FHIR_PASSWORD)
+FHIR_SESSION.verify = False
 
 class ValidationResult:
     def __init__(self):
@@ -34,7 +47,7 @@ class ValidationResult:
 def check_server_reachable(result: ValidationResult) -> bool:
     """Check if FHIR server is reachable and returns metadata."""
     try:
-        resp = requests.get(f"{FHIR_BASE}/metadata", params={"_format": "json"}, timeout=10)
+        resp = FHIR_SESSION.get(f"{FHIR_BASE}/metadata", params={"_format": "json"}, timeout=10)
         if resp.status_code == 200:
             metadata = resp.json()
             fhir_version = metadata.get("fhirVersion", "unknown")
@@ -55,7 +68,7 @@ def check_server_reachable(result: ValidationResult) -> bool:
 def check_diabetes_conditions(result: ValidationResult) -> List[str]:
     """Check for Type 2 Diabetes conditions (SNOMED CT: 44054006)."""
     try:
-        resp = requests.get(
+        resp = FHIR_SESSION.get(
             f"{FHIR_BASE}/Condition",
             params={"code": "44054006", "_count": 20, "_format": "json"},
             timeout=15
@@ -103,7 +116,7 @@ def check_patients_fetchable(result: ValidationResult, patient_ids: List[str]) -
 
     for patient_id in patient_ids[:10]:  # Test up to 10 patients
         try:
-            resp = requests.get(
+            resp = FHIR_SESSION.get(
                 f"{FHIR_BASE}/Patient/{patient_id}",
                 params={"_format": "json"},
                 timeout=10
@@ -144,7 +157,7 @@ def check_hba1c_observations(result: ValidationResult, patient_ids: List[str]) -
 
     for patient_id in patient_ids[:10]:  # Test up to 10 patients
         try:
-            resp = requests.get(
+            resp = FHIR_SESSION.get(
                 f"{FHIR_BASE}/Observation",
                 params={
                     "subject": f"Patient/{patient_id}",
@@ -203,7 +216,7 @@ def check_medications(result: ValidationResult, patient_ids: List[str]) -> bool:
     found_count = 0
     for patient_id in patient_ids[:5]:
         try:
-            resp = requests.get(
+            resp = FHIR_SESSION.get(
                 f"{FHIR_BASE}/MedicationRequest",
                 params={
                     "subject": f"Patient/{patient_id}",
@@ -237,7 +250,7 @@ def check_encounters(result: ValidationResult, patient_ids: List[str]) -> bool:
     found_count = 0
     for patient_id in patient_ids[:5]:
         try:
-            resp = requests.get(
+            resp = FHIR_SESSION.get(
                 f"{FHIR_BASE}/Encounter",
                 params={
                     "subject": f"Patient/{patient_id}",
@@ -271,7 +284,7 @@ def check_all_conditions(result: ValidationResult, patient_ids: List[str]) -> bo
     patients_with_multiple = 0
     for patient_id in patient_ids[:5]:
         try:
-            resp = requests.get(
+            resp = FHIR_SESSION.get(
                 f"{FHIR_BASE}/Condition",
                 params={
                     "subject": f"Patient/{patient_id}",
@@ -299,7 +312,7 @@ def check_all_conditions(result: ValidationResult, patient_ids: List[str]) -> bo
 def check_hypertension(result: ValidationResult) -> List[str]:
     """Check for hypertension conditions (SNOMED CT: 59621000)."""
     try:
-        resp = requests.get(
+        resp = FHIR_SESSION.get(
             f"{FHIR_BASE}/Condition",
             params={"code": "59621000", "_count": 10, "_format": "json"},
             timeout=15
@@ -340,7 +353,7 @@ def check_blood_pressure(result: ValidationResult, patient_ids: List[str]) -> bo
     found_count = 0
     for patient_id in patient_ids[:5]:
         try:
-            resp = requests.get(
+            resp = FHIR_SESSION.get(
                 f"{FHIR_BASE}/Observation",
                 params={
                     "subject": f"Patient/{patient_id}",
@@ -375,7 +388,7 @@ def check_creatinine(result: ValidationResult, patient_ids: List[str]) -> bool:
     found_count = 0
     for patient_id in patient_ids[:5]:
         try:
-            resp = requests.get(
+            resp = FHIR_SESSION.get(
                 f"{FHIR_BASE}/Observation",
                 params={
                     "subject": f"Patient/{patient_id}",
