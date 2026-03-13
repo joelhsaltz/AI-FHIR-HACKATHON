@@ -113,8 +113,8 @@ By completing this hackathon, students will:
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/fhir-hackathon.git
-cd fhir-hackathon
+git clone https://github.com/joelhsaltz/AI-FHIR-HACKATHON.git
+cd AI-FHIR-HACKATHON
 
 # Set your API key
 export ANTHROPIC_API_KEY=your_api_key_here
@@ -205,24 +205,23 @@ fhir-hackathon/
 │
 ├── student_materials/
 │   ├── notebooks/                     # Student-facing Jupyter notebooks
-│   │   ├── session1_student.ipynb     # Session 1: Manual FHIR queries
-│   │   ├── session1_backup.ipynb      # Session 1: Backup (local FHIR server)
-│   │   ├── session2_student.ipynb     # Session 2: Agent observation
-│   │   └── session3_student.ipynb     # Session 3: Open-ended exploration
+│   │   ├── session{1,2,3}_student.ipynb       # v1 (public SMART sandbox)
+│   │   ├── session{1,2,3}_student_v2.ipynb    # v2 (SBU server, auth patched)
+│   │   ├── session{1,2,3}_student_v3.ipynb    # v3 (SBU server, current)
+│   │   └── session1_backup.ipynb              # Local Flask FHIR fallback
+│   ├── orientation_pdfs/              # (empty — PDFs removed)
 │   └── run_agent_explained.md         # Deep-dive explainer of the agent loop
 │
-├── pre_session1_orientation.pdf       # Session 1 slides
-├── pre_session2_orientation.pdf       # Session 2 slides
-├── pre_session3_orientation.pdf       # Session 3 slides
+├── instructor_materials/
+│   ├── notebooks/                     # Instructor versions + annotated variants
+│   ├── tests/                         # Notebook validation tests
+│   ├── validate_fhir_server.py        # Validate FHIR server connectivity
+│   └── README_FOR_INSTRUCTORS.md
 │
-├── test_session1.py                   # Test Session 1 functionality
-├── test_session2_simplified.py        # Test Session 2 agent
-├── test_session3_simplified.py        # Test Session 3 agent
-├── validate_fhir_server.py            # Validate FHIR data availability
-│
-├── fhir_hackathon_claude_code_spec.md # Complete build specification
-├── TESTING_SUMMARY.md                 # Test results and validation
-└── SIMPLIFICATION_SUMMARY.md          # Architecture decisions
+├── docs/                              # Build specs and architecture notes
+├── create_v3_notebooks.py             # Generates all 6 v3 notebooks
+├── create_annotated_notebooks.py      # Generates annotated instructor notebooks
+└── create_v2_notebooks.py             # Generates v2 notebooks (historical)
 ```
 
 ---
@@ -233,8 +232,8 @@ fhir-hackathon/
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/fhir-hackathon.git
-cd fhir-hackathon
+git clone https://github.com/joelhsaltz/AI-FHIR-HACKATHON.git
+cd AI-FHIR-HACKATHON
 
 # (Optional) Create a virtual environment
 python -m venv venv

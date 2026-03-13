@@ -17,6 +17,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   diagram, and a worked example tracing a real 4-step query using actual FHIR
   server data.
 
+### Removed
+
+- Small orientation PDFs (`pre_session{1,2,3}_orientation.pdf`) — no longer
+  needed for the course.
+- Stale remote branches (`codex/add-reference-materials`,
+  `codex/notebook-debug-strategy`, `codex/fhir-auth-v2`,
+  `codex/session3-plot-optimization`) that carried ~43 MB of large "Notebook LM
+  talks" PDFs in their history. Deleting these branches reduced fresh clone size
+  from ~42 MB to ~600 KB and clone time from 2+ minutes to under 10 seconds.
+
+### Changed
+
+- Updated clone URL in README.md to the correct GitHub repository
+  (`https://github.com/joelhsaltz/AI-FHIR-HACKATHON.git`).
+- Updated repository structure in README.md to reflect current layout (v1/v2/v3
+  notebooks, instructor_materials, docs).
+
 - **V3 notebooks** — complete content rewrite targeting SBU LinuxForHealth FHIR
   server with 1,027 phenotype-structured synthetic patients across 6 clinical
   groups. 6 new notebooks: `session{1,2,3}_{student,instructor}_v3.ipynb`.
