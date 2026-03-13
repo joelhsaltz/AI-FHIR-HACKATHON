@@ -17,6 +17,7 @@ fhir-hackathon/
 │   │   ├── session{1,2,3}_student_v3.ipynb   # v3 (SBU server, full rewrite)
 │   │   └── session1_backup.ipynb              # Local Flask FHIR fallback
 │   ├── orientation_pdfs/   # Pre-session slide decks
+│   ├── run_agent_explained.md  # Deep-dive explainer of the agent loop
 │   └── README_FOR_STUDENTS.md
 ├── instructor_materials/
 │   ├── notebooks/          # Instructor versions + annotated variants
@@ -67,6 +68,7 @@ cd instructor_materials/tests && python run_tests.py
 | `instructor_materials/notebooks/session{1,2,3}_instructor_v3.ipynb` | V3 instructor notebooks (current) |
 | `create_v3_notebooks.py` | Generates all 6 v3 notebooks from scratch |
 | `create_annotated_notebooks.py` | Inserts annotation cells into v1 instructor notebooks |
+| `student_materials/run_agent_explained.md` | Beginner-friendly walkthrough of the `run_agent` agent loop |
 | `CHANGELOG.md` | All changes documented here |
 
 ## Conventions
