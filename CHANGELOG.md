@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `student_materials/run_agent_explained.md` — beginner-friendly walkthrough of
+  the `run_agent` function from Session 3. Covers each section of the code with
+  plain-English explanations: function signature, initialization, the while loop,
+  Claude API calls, tool use detection, message serialization, tool execution,
+  the `tool_result` format, and the `max_steps` safety valve. Includes an
+  explanation of assistant vs user roles in the messages list, an ASCII flow
+  diagram, and a worked example tracing a real 4-step query using actual FHIR
+  server data.
+
 - **V3 notebooks** — complete content rewrite targeting SBU LinuxForHealth FHIR
   server with 1,027 phenotype-structured synthetic patients across 6 clinical
   groups. 6 new notebooks: `session{1,2,3}_{student,instructor}_v3.ipynb`.

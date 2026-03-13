@@ -68,6 +68,9 @@ By completing this hackathon, students will:
 - ✅ Understand when to trust AI agents with clinical data
 - ✅ Learn about MCP (Model Context Protocol) for tool standardization
 
+### Supplementary Materials
+- 📄 [`run_agent_explained.md`](student_materials/run_agent_explained.md) — A beginner-friendly walkthrough of the `run_agent` function: how the tool-use loop works, what the "assistant" and "user" roles mean, and a worked example tracing a real query step by step
+
 ---
 
 ## 📋 Prerequisites
@@ -200,11 +203,13 @@ fhir-hackathon/
 ├── .gitignore                         # Excludes API keys, system files
 ├── .env.example                       # Template for API keys
 │
-├── notebooks/                         # Student materials
-│   ├── session1_student.ipynb         # Session 1: Manual FHIR queries
-│   ├── session1_backup.ipynb          # Session 1: Backup (local FHIR server)
-│   ├── session2_student.ipynb         # Session 2: Agent observation
-│   └── session3_student.ipynb         # Session 3: Open-ended exploration
+├── student_materials/
+│   ├── notebooks/                     # Student-facing Jupyter notebooks
+│   │   ├── session1_student.ipynb     # Session 1: Manual FHIR queries
+│   │   ├── session1_backup.ipynb      # Session 1: Backup (local FHIR server)
+│   │   ├── session2_student.ipynb     # Session 2: Agent observation
+│   │   └── session3_student.ipynb     # Session 3: Open-ended exploration
+│   └── run_agent_explained.md         # Deep-dive explainer of the agent loop
 │
 ├── pre_session1_orientation.pdf       # Session 1 slides
 ├── pre_session2_orientation.pdf       # Session 2 slides
