@@ -3,8 +3,9 @@
 .AppleDouble
 .LSOverride
 
-# Claude Code
-.claude/
+# Claude Code (keep skills tracked, ignore everything else)
+.claude/*
+!.claude/skills/
 
 # Python
 __pycache__/

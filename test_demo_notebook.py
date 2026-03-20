@@ -37,6 +37,49 @@ def run_cell(code, namespace, label, timeout_sec=120):
         signal.alarm(0)
 
 
+# New dropdown value for the 8-option action param
+ACTION_PARAM_OLD = (
+    'action = "Get demographics" #@param '
+    '["Get demographics", "Get problem list", "Get C-peptide", '
+    '"Get HbA1c", "Get BMI", "Get eGFR", "Get treatment regimen", "Get encounters"]'
+)
+ASSESSMENT_PARAM_OLD = (
+    'assessment = "No opinion yet" #@param '
+    '["No opinion yet", "Slight lean toward Type 1", "Slight lean toward Type 2", '
+    '"Strongly leaning Type 1", "Strongly leaning Type 2", '
+    '"Confident Type 1", "Confident Type 2", "Unclear — conflicting evidence"]'
+)
+READY_PARAM_OLD = 'ready_to_answer = False #@param {type:"boolean"}'
+
+
+def strip_params(src, action_value="Get demographics"):
+    """Replace #@param annotations with concrete values."""
+    processed = src
+    processed = re.sub(r"#@title .+\n?", "", processed)
+    # Action dropdown
+    processed = processed.replace(ACTION_PARAM_OLD, f'action = "{action_value}"')
+    # Assessment dropdown
+    processed = processed.replace(ASSESSMENT_PARAM_OLD, 'assessment = "No opinion yet"')
+    # Ready checkbox
+    processed = processed.replace(READY_PARAM_OLD, 'ready_to_answer = False')
+    # Case number
+    processed = processed.replace(
+        'case_number = 1 #@param {type:"integer"}',
+        'case_number = 1',
+    )
+    # Classification
+    processed = processed.replace(
+        'classification = "Likely Type 1" #@param ["Likely Type 1", "Likely Type 2", "Unclear / needs more review"]',
+        'classification = "Likely Type 1"',
+    )
+    # Rationale
+    processed = processed.replace(
+        'rationale = "" #@param {type:"string"}',
+        'rationale = "Test rationale: low C-peptide, insulin-only"',
+    )
+    return processed
+
+
 def main():
     with open("prototypes/you_are_the_agent_demo.ipynb") as f:
         nb = json.load(f)
@@ -61,52 +104,41 @@ def main():
             results.append(("SKIP", title))
             continue
 
-        # Replace #@param annotations with concrete values
-        processed = src
-        # Remove the #@title line (it's just a comment)
-        processed = re.sub(r"#@title .+\n?", "", processed)
-        # Set form param values
-        processed = processed.replace(
-            'action = "Get demographics" #@param ["Get demographics", "Get full problem list", "Get labs", "Get medications", "Get encounters"]',
-            'action = "Get demographics"',
-        )
-        # lab_type dropdown removed — Get labs now fetches all labs at once
-        processed = processed.replace(
-            'case_number = 1 #@param {type:"integer"}',
-            'case_number = 1',
-        )
-        processed = processed.replace(
-            'classification = "Likely Type 1" #@param ["Likely Type 1", "Likely Type 2", "Unclear / needs more review"]',
-            'classification = "Likely Type 1"',
-        )
-        processed = processed.replace(
-            'rationale = "" #@param {type:"string"}',
-            'rationale = "Test rationale: low C-peptide, insulin-only"',
-        )
-
+        processed = strip_params(src)
         ok = run_cell(processed, ns, title, timeout_sec=180)
         results.append(("PASS" if ok else "FAIL", title))
 
-        # After "Gather evidence" step, also test Get labs (all at once) and Get medications
+        # After "Gather evidence" step, test individual tools
         if "gather evidence" in title.lower():
-            lab_src = src
-            lab_src = re.sub(r"#@title .+\n?", "", lab_src)
-            lab_src = lab_src.replace(
-                'action = "Get demographics" #@param ["Get demographics", "Get full problem list", "Get labs", "Get medications", "Get encounters"]',
-                'action = "Get labs"',
-            )
-            ok2 = run_cell(lab_src, ns, "Gather evidence: Get labs (all)", timeout_sec=60)
-            results.append(("PASS" if ok2 else "FAIL", "Gather evidence: all labs"))
+            # Test Get C-peptide (individual lab)
+            cp_src = strip_params(src, action_value="Get C-peptide")
+            ok_cp = run_cell(cp_src, ns, "Gather evidence: Get C-peptide", timeout_sec=60)
+            results.append(("PASS" if ok_cp else "FAIL", "Gather evidence: C-peptide"))
 
-            # Also test Get medications
-            med_src = src
-            med_src = re.sub(r"#@title .+\n?", "", med_src)
-            med_src = med_src.replace(
-                'action = "Get demographics" #@param ["Get demographics", "Get full problem list", "Get labs", "Get medications", "Get encounters"]',
-                'action = "Get medications"',
-            )
-            ok3 = run_cell(med_src, ns, "Gather evidence: Get medications", timeout_sec=60)
-            results.append(("PASS" if ok3 else "FAIL", "Gather evidence: medications"))
+            # Test Get HbA1c
+            hba1c_src = strip_params(src, action_value="Get HbA1c")
+            ok_hba1c = run_cell(hba1c_src, ns, "Gather evidence: Get HbA1c", timeout_sec=60)
+            results.append(("PASS" if ok_hba1c else "FAIL", "Gather evidence: HbA1c"))
+
+            # Test Get BMI
+            bmi_src = strip_params(src, action_value="Get BMI")
+            ok_bmi = run_cell(bmi_src, ns, "Gather evidence: Get BMI", timeout_sec=60)
+            results.append(("PASS" if ok_bmi else "FAIL", "Gather evidence: BMI"))
+
+            # Test Get eGFR
+            egfr_src = strip_params(src, action_value="Get eGFR")
+            ok_egfr = run_cell(egfr_src, ns, "Gather evidence: Get eGFR", timeout_sec=60)
+            results.append(("PASS" if ok_egfr else "FAIL", "Gather evidence: eGFR"))
+
+            # Test Get treatment regimen
+            med_src = strip_params(src, action_value="Get treatment regimen")
+            ok_med = run_cell(med_src, ns, "Gather evidence: Get treatment regimen", timeout_sec=60)
+            results.append(("PASS" if ok_med else "FAIL", "Gather evidence: treatment regimen"))
+
+            # Test Get encounters
+            enc_src = strip_params(src, action_value="Get encounters")
+            ok_enc = run_cell(enc_src, ns, "Gather evidence: Get encounters", timeout_sec=60)
+            results.append(("PASS" if ok_enc else "FAIL", "Gather evidence: encounters"))
 
     print("\n" + "=" * 60)
     print("SUMMARY")

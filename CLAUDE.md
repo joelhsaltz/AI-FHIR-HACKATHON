@@ -278,7 +278,10 @@ that block execution:
   auto-granting. Colab uses shadow DOM for its dialogs, so the handler uses
   JavaScript to recursively search shadow roots for buttons.
 - **"Too many sessions"** — Clicks "Manage sessions", terminates old sessions,
-  and retries the runtime connection. Common after repeated automated test runs.
+  and retries the runtime connection. If the dialog reappears during Run All
+  execution, the script automatically reconnects and re-triggers Run All (with
+  timer reset). Handles multiple consecutive session dialogs. Common after
+  repeated automated test runs.
 
 **Cached outputs warning:** After `colab_screenshot.py` runs a notebook, Colab
 auto-saves cell outputs to the Drive file. If someone later opens this notebook
