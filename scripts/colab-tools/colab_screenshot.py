@@ -72,6 +72,67 @@ def check_signed_in(page) -> bool:
     return sign_in is None
 
 
+def dismiss_dialog(page, btn_text):
+    """Click a button by text in any dialog, piercing shadow DOM.
+
+    Returns True if the button was found and clicked, False otherwise.
+    """
+    clicked = page.evaluate(f"""() => {{
+        function findButton(root) {{
+            const elements = root.querySelectorAll(
+                'button, mwc-button, a, [role="button"], md-text-button, md-filled-button'
+            );
+            for (const el of elements) {{
+                const text = (el.textContent || '').trim();
+                if (text === '{btn_text}') {{
+                    el.click();
+                    return true;
+                }}
+            }}
+            for (const el of root.querySelectorAll('*')) {{
+                if (el.shadowRoot) {{
+                    const found = findButton(el.shadowRoot);
+                    if (found) return true;
+                }}
+            }}
+            return false;
+        }}
+        return findButton(document);
+    }}""")
+    if clicked:
+        time.sleep(1)
+    return clicked
+
+
+def handle_colab_dialogs(page, grant_secrets=True):
+    """Handle common Colab dialogs: secret access, too many sessions, etc.
+
+    Returns a list of dialog names that were handled.
+    """
+    handled = []
+
+    # "Too many sessions" — click Manage sessions, then terminate others
+    if dismiss_dialog(page, "Manage sessions"):
+        handled.append("too many sessions")
+        time.sleep(2)
+        # Look for Terminate buttons in the session manager
+        for _ in range(5):
+            if dismiss_dialog(page, "Terminate"):
+                time.sleep(1)
+            else:
+                break
+        # Close the session manager by pressing Escape
+        page.keyboard.press("Escape")
+        time.sleep(1)
+
+    # "Notebook does not have secret access" — grant or cancel
+    btn_text = "Grant access" if grant_secrets else "Cancel"
+    if dismiss_dialog(page, btn_text):
+        handled.append("secret access")
+
+    return handled
+
+
 def expand_all_sections(page):
     """Expand all collapsed section headers so Run All reaches every cell."""
     collapsed = page.query_selector_all(
@@ -123,7 +184,31 @@ def wait_for_runtime(page, timeout_s=60):
         print("  Clicked Connect button", file=sys.stderr)
 
     start = time.time()
+    _sessions_handled = False
     while time.time() - start < timeout_s:
+        # Handle "Too many sessions" dialog if it appears
+        if not _sessions_handled and dismiss_dialog(page, "Manage sessions"):
+            print("  Handling 'too many sessions'...", file=sys.stderr)
+            time.sleep(2)
+            for _ in range(10):
+                if dismiss_dialog(page, "Terminate"):
+                    time.sleep(1)
+                else:
+                    break
+            page.keyboard.press("Escape")
+            time.sleep(2)
+            _sessions_handled = True
+            # Retry Connect after terminating sessions
+            connect_btn = page.query_selector(
+                "button:has-text('Connect'), "
+                "colab-connect-button, "
+                "#connect"
+            )
+            if connect_btn:
+                connect_btn.click()
+                print("  Retrying Connect after terminating sessions", file=sys.stderr)
+            continue
+
         ready = page.query_selector(
             "span:has-text('Python 3'), "
             "div[class*='connected']:not([class*='disconnected'])"
@@ -137,7 +222,7 @@ def wait_for_runtime(page, timeout_s=60):
     return False
 
 
-def run_all_cells(page, timeout_s=300):
+def run_all_cells(page, timeout_s=300, grant_secrets=True):
     """Trigger Runtime > Run All and wait for execution to complete."""
     print(f"  Triggering Run All ({RUN_ALL_KEY})...", file=sys.stderr)
     page.keyboard.press(RUN_ALL_KEY)
@@ -161,6 +246,11 @@ def run_all_cells(page, timeout_s=300):
     saw_running = False
 
     while time.time() - start < timeout_s:
+        # Handle dialogs that appear during execution (secrets, sessions, etc.)
+        _handled = handle_colab_dialogs(page, grant_secrets=grant_secrets)
+        for _h in _handled:
+            print(f"  Handled dialog: {_h}", file=sys.stderr)
+
         running = page.query_selector_all(
             "div.cell-execution-indicator[class*='running'], "
             "div[class*='running-indicator'], "
@@ -323,6 +413,8 @@ def main():
                         help="Screenshot filename prefix (default: colab)")
     parser.add_argument("--storage-state", type=Path, default=DEFAULT_AUTH_PATH,
                         help=f"Path to Playwright storageState JSON (default: {DEFAULT_AUTH_PATH})")
+    parser.add_argument("--no-grant-secrets", action="store_true",
+                        help="Don't auto-grant secret access (click Cancel instead)")
     parser.add_argument("--keep-open", action="store_true",
                         help="Keep browser open after screenshots for manual inspection")
     args = parser.parse_args()
@@ -369,6 +461,12 @@ def main():
             browser.close()
             sys.exit(1)
 
+        # Handle any dialogs that appear on load (secrets, too many sessions, etc.)
+        _grant = not args.no_grant_secrets
+        _handled = handle_colab_dialogs(page, grant_secrets=_grant)
+        for _h in _handled:
+            print(f"  Handled dialog: {_h}", file=sys.stderr)
+
         # Pre-run screenshot
         pre_path = args.output_dir / f"{args.output_prefix}_before_run.png"
         screenshots.append(take_screenshot(page, pre_path, label="before execution"))
@@ -376,7 +474,7 @@ def main():
         if not args.no_run:
             expand_all_sections(page)
             wait_for_runtime(page, timeout_s=60)
-            exec_success = run_all_cells(page, timeout_s=args.timeout)
+            exec_success = run_all_cells(page, timeout_s=args.timeout, grant_secrets=_grant)
             time.sleep(3)
 
             # Post-run screenshot

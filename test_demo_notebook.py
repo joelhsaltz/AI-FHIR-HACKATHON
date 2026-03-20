@@ -70,10 +70,7 @@ def main():
             'action = "Get demographics" #@param ["Get demographics", "Get full problem list", "Get labs", "Get medications", "Get encounters"]',
             'action = "Get demographics"',
         )
-        processed = processed.replace(
-            'lab_type = "HbA1c" #@param ["HbA1c", "C-peptide", "BMI", "Creatinine", "eGFR"]',
-            'lab_type = "HbA1c"',
-        )
+        # lab_type dropdown removed — Get labs now fetches all labs at once
         processed = processed.replace(
             'case_number = 1 #@param {type:"integer"}',
             'case_number = 1',
@@ -90,7 +87,7 @@ def main():
         ok = run_cell(processed, ns, title, timeout_sec=180)
         results.append(("PASS" if ok else "FAIL", title))
 
-        # After "Gather evidence" step, also test Get labs: C-peptide
+        # After "Gather evidence" step, also test Get labs (all at once) and Get medications
         if "gather evidence" in title.lower():
             lab_src = src
             lab_src = re.sub(r"#@title .+\n?", "", lab_src)
@@ -98,12 +95,8 @@ def main():
                 'action = "Get demographics" #@param ["Get demographics", "Get full problem list", "Get labs", "Get medications", "Get encounters"]',
                 'action = "Get labs"',
             )
-            lab_src = lab_src.replace(
-                'lab_type = "HbA1c" #@param ["HbA1c", "C-peptide", "BMI", "Creatinine", "eGFR"]',
-                'lab_type = "C-peptide"',
-            )
-            ok2 = run_cell(lab_src, ns, "Gather evidence: Get labs → C-peptide", timeout_sec=60)
-            results.append(("PASS" if ok2 else "FAIL", "Gather evidence: C-peptide"))
+            ok2 = run_cell(lab_src, ns, "Gather evidence: Get labs (all)", timeout_sec=60)
+            results.append(("PASS" if ok2 else "FAIL", "Gather evidence: all labs"))
 
             # Also test Get medications
             med_src = src
@@ -111,10 +104,6 @@ def main():
             med_src = med_src.replace(
                 'action = "Get demographics" #@param ["Get demographics", "Get full problem list", "Get labs", "Get medications", "Get encounters"]',
                 'action = "Get medications"',
-            )
-            med_src = med_src.replace(
-                'lab_type = "HbA1c" #@param ["HbA1c", "C-peptide", "BMI", "Creatinine", "eGFR"]',
-                'lab_type = "HbA1c"',
             )
             ok3 = run_cell(med_src, ns, "Gather evidence: Get medications", timeout_sec=60)
             results.append(("PASS" if ok3 else "FAIL", "Gather evidence: medications"))

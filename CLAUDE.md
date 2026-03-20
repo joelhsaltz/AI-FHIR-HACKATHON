@@ -219,6 +219,30 @@ If you cannot verify in Colab (e.g., browser automation broken, auth issues,
 server down), **stop and tell the user**. Do not substitute a lesser form of
 verification and call it done. The user will decide how to proceed.
 
+## Notebook Change Rule — Hard Rule
+
+**Any time a notebook is created or modified, it MUST be tested in Google Colab
+with live FHIR data before the change is considered complete.** This is not
+optional and not deferrable. The test sequence is:
+
+1. Regenerate the notebook from the generator script
+2. Run local validation (`nb_validate.py` + smoke test)
+3. Upload to Google Drive
+4. Run all cells in Colab via `colab_screenshot.py --sections`
+5. Review screenshots for errors, rendering issues, and correct behavior
+6. Fix → regenerate → re-upload → re-screenshot until clean
+
+Skipping Colab testing because "the code looks correct" or "it passed locally"
+is never acceptable.
+
+## TO-DO: Future Improvements
+
+- **Reversible code toggle:** Build a proper JS-based button injected into cell
+  output that lets students show/hide code without entering edit mode.
+  Double-clicking the title bar currently clears execution state, and the
+  "Show code" link is one-way. A future iteration should add a toggle button
+  that manipulates the DOM safely. (Added 2026-03-20)
+
 ## Git Workflow
 
 Follow the governance rules in `~/.claude/CLAUDE.md`:
