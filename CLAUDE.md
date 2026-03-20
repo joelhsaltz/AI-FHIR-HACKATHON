@@ -270,6 +270,22 @@ to bypass Google's automation blocking. After sign-in, cookies are exported via
 **Scroll handling:** Colab uses `<colab-scroller id="notebook-main">` as its scroll
 container. The screenshot script detects this and scrolls it directly (not `window.scrollTo`).
 
+**Dialog handling:** The screenshot script automatically handles two Colab dialogs
+that block execution:
+- **"Notebook does not have secret access"** — Auto-clicks "Grant access" so
+  notebooks can use Colab Secrets (e.g., `ANTHROPIC_API_KEY`). The secret must
+  already exist in the user's Colab account. Use `--no-grant-secrets` to prevent
+  auto-granting. Colab uses shadow DOM for its dialogs, so the handler uses
+  JavaScript to recursively search shadow roots for buttons.
+- **"Too many sessions"** — Clicks "Manage sessions", terminates old sessions,
+  and retries the runtime connection. Common after repeated automated test runs.
+
+**Cached outputs warning:** After `colab_screenshot.py` runs a notebook, Colab
+auto-saves cell outputs to the Drive file. If someone later opens this notebook
+and runs cells individually, they'll see stale cached outputs that may look like
+a cell has already completed when it's still running. Always upload a fresh
+notebook (regenerated from the generator, with `"outputs": []`) before sharing.
+
 The skill is symlinked to `~/.claude/skills/colab-notebook-tools` for global
 availability. **Future plan:** extract into a standalone distributable plugin.
 
