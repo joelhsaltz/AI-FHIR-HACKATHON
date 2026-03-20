@@ -150,6 +150,62 @@ kernel between running questions and generating the deliverable.
 cached Synthea patients embedded as Python dicts. Same API surface as the real
 server.
 
+## Colab Notebook Tools — Technical Details
+
+### Architecture
+
+```
+Layer 4: VISUAL VERIFICATION    Playwright + storageState → Colab screenshots
+Layer 3: COLAB EXECUTION        Run All via Playwright, wait for completion
+Layer 2: LOCAL VALIDATION        nbformat + ast.parse + exec() harness
+Layer 1: NOTEBOOK AUTHORING      nbformat programmatic creation/editing
+```
+
+### Google Auth (the hard part)
+
+Google blocks sign-in in automation browsers. Three things are required:
+
+1. **`launch_persistent_context`** — creates a real browser profile at
+   `~/.colab-notebook-tools/browser_data/` that persists across runs
+2. **`--disable-blink-features=AutomationControlled`** — removes `navigator.webdriver=true`
+3. **`ignore_default_args=["--enable-automation"]`** — suppresses automation infobar
+
+After sign-in, cookies are exported via `context.storage_state()` to `auth.json`.
+The screenshot script loads this into a regular ephemeral context — it doesn't
+need the persistent profile.
+
+**What does NOT work:** `channel="chrome"`, plain `launch_persistent_context`
+without args, `launch()` + `new_context()`, incognito mode. Google's detection
+is server-side and checks for specific browser properties.
+
+### Colab DOM Structure
+
+Colab uses a custom web component for scrolling:
+
+```
+<colab-scroller id="notebook-main" class="notebook-container">
+  scrollHeight: ~6000-8000px, clientHeight: ~730px
+</colab-scroller>
+```
+
+`window.scrollTo()` has no effect. Must scroll this element directly:
+```javascript
+document.querySelector('colab-scroller#notebook-main').scrollTo(0, y);
+```
+
+### Screenshot Pipeline
+
+1. Load `auth.json` into ephemeral browser context
+2. Navigate to `colab.research.google.com/drive/{file_id}`
+3. Wait for notebook load (cells visible)
+4. Expand all collapsed sections
+5. Connect to runtime (click Connect button if needed)
+6. Trigger Run All via `Meta+F9` (macOS) or `Control+F9`
+7. Handle "Run anyway" confirmation dialog
+8. Wait for execution (monitor running indicator elements)
+9. Take before/after screenshots
+10. Scroll `colab-scroller` to 5 evenly-spaced positions, screenshot each
+
 ## Debugging Guide
 
 ### Common Issues

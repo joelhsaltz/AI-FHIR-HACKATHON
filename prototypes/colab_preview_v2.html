@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>You Are the Agent — Colab Preview v2</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Google Sans', 'Roboto', Arial, sans-serif;
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 24px;
+    background: #fff;
+    color: #202124;
+    line-height: 1.6;
+  }
+  .notebook-header {
+    background: #f8f9fa;
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin-bottom: 24px;
+    border: 1px solid #dadce0;
+    font-size: 13px;
+    color: #5f6368;
+  }
+  .md-cell { padding: 8px 0 16px 0; }
+  .md-cell h1 { font-size: 28px; color: #202124; margin: 0 0 4px 0; }
+  .md-cell h2 { font-size: 22px; color: #202124; margin: 24px 0 12px 0; border-bottom: 1px solid #e8eaed; padding-bottom: 8px; }
+  .md-cell h3 { font-size: 17px; color: #202124; margin: 16px 0 8px 0; }
+  .md-cell ul, .md-cell ol { padding-left: 24px; }
+  .md-cell li { margin-bottom: 4px; }
+  .md-cell blockquote {
+    border-left: 4px solid #1a73e8;
+    margin: 12px 0;
+    padding: 8px 16px;
+    background: #e8f0fe;
+    border-radius: 0 4px 4px 0;
+    color: #174ea6;
+  }
+  .md-cell code {
+    background: #f1f3f4;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: 'Roboto Mono', monospace;
+  }
+  .md-cell pre {
+    background: #f8f9fa;
+    padding: 16px;
+    border-radius: 8px;
+    border: 1px solid #e8eaed;
+    overflow-x: auto;
+  }
+  .md-cell pre code { background: none; padding: 0; }
+  .form-cell {
+    border: 1px solid #dadce0;
+    border-radius: 8px;
+    margin: 12px 0;
+    overflow: hidden;
+  }
+  .form-header {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e8eaed;
+    gap: 8px;
+  }
+  .run-btn {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: none; border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; color: #5f6368;
+  }
+  .run-btn:hover { background: #e8eaed; }
+  .run-btn svg { width: 18px; height: 18px; }
+  .form-title { font-size: 14px; font-weight: 500; color: #202124; }
+  .form-body { padding: 16px; }
+  .form-field {
+    margin: 8px 0;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .form-field label {
+    font-size: 13px; color: #5f6368; min-width: 100px;
+  }
+  .form-field select, .form-field input[type="text"], .form-field input[type="number"] {
+    padding: 6px 12px;
+    border: 1px solid #dadce0; border-radius: 4px;
+    font-size: 14px; background: #fff; color: #202124;
+    min-width: 250px;
+  }
+  .form-field input[type="text"] { min-width: 400px; }
+  .output-area {
+    padding: 16px; background: #fff;
+    border-top: 1px solid #f1f3f4;
+  }
+  table {
+    border-collapse: collapse; width: 100%; margin: 8px 0;
+  }
+  th {
+    background: #f8f9fa; text-align: left; padding: 8px 12px;
+    font-size: 13px; color: #5f6368; border-bottom: 2px solid #e8eaed;
+  }
+  td {
+    padding: 8px 12px; font-size: 14px; border-bottom: 1px solid #f1f3f4;
+  }
+  .status-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 12px;
+    font-size: 12px; font-weight: 500;
+  }
+  .badge-green { background: #e6f4ea; color: #137333; }
+  .badge-blue { background: #e8f0fe; color: #1967d2; }
+  .badge-amber { background: #fef7e0; color: #b06000; }
+  .dashboard {
+    background: #f8f9fa; border: 1px solid #e8eaed;
+    border-radius: 8px; padding: 16px 20px; margin: 16px 0;
+  }
+  .dashboard h2 { margin-top: 0; font-size: 18px; border: none; padding: 0; }
+  .dashboard h3 { font-size: 15px; margin-top: 12px; }
+  .missing-list { color: #d93025; }
+  .missing-list li { margin: 2px 0; }
+  .coach-box {
+    background: #e8f0fe; border-left: 4px solid #1a73e8;
+    padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 12px 0;
+  }
+  .fhir-query {
+    background: #fef7e0;
+    border: 1px solid #f5c518;
+    border-radius: 6px;
+    padding: 8px 14px;
+    margin: 10px 0;
+    font-family: 'Roboto Mono', monospace;
+    font-size: 13px;
+    color: #5f3400;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .fhir-query .label {
+    font-family: 'Google Sans', 'Roboto', sans-serif;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #b06000;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .toolkit-card {
+    background: #fff;
+    border: 1px solid #dadce0;
+    border-radius: 8px;
+    overflow: hidden;
+    margin: 12px 0;
+  }
+  .toolkit-card .card-header {
+    background: #e8eaed;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #3c4043;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .toolkit-card .card-body {
+    padding: 12px 14px;
+  }
+  .toolkit-card table { margin: 0; }
+  .toolkit-card td { font-size: 13px; padding: 6px 10px; }
+  .toolkit-card th { font-size: 12px; padding: 6px 10px; }
+  .fhir-resource {
+    font-family: 'Roboto Mono', monospace;
+    font-size: 12px;
+    background: #f1f3f4;
+    padding: 2px 6px;
+    border-radius: 3px;
+  }
+  .agent-step {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 8px 0; font-size: 14px; color: #5f6368;
+    border-bottom: 1px solid #f1f3f4;
+  }
+  .agent-step:last-child { border-bottom: none; }
+  .agent-step strong { color: #202124; min-width: 50px; }
+</style>
+</head>
+<body>
+
+<div class="notebook-header">
+  This preview simulates what students see in Google Colab.
+  Code cells appear as titled bars with Run buttons. Students interact via dropdowns.
+  <strong>FHIR queries are surfaced</strong> so students learn what's happening at the data layer.
+</div>
+
+<!-- ===== WELCOME ===== -->
+<div class="md-cell">
+  <h1>You Are the Agent</h1>
+  <h2>A Clinical Decision-Making Exercise Using FHIR</h2>
+  <p>In this exercise, <strong>you play the role of a clinical AI agent.</strong>
+  You have a clinical question to answer about a patient. Your tools are
+  <strong>FHIR queries</strong> — structured requests against an electronic health record server.</p>
+
+  <p>An AI agent works in a loop:</p>
+  <ol>
+    <li><strong>Observe</strong> — what evidence do I have so far?</li>
+    <li><strong>Decide</strong> — what's the most useful query to run next?</li>
+    <li><strong>Act</strong> — execute a FHIR query to retrieve data</li>
+    <li><strong>Update</strong> — add the new evidence to my assessment</li>
+    <li><strong>Repeat</strong> or <strong>answer</strong> when confident</li>
+  </ol>
+
+  <p>You'll do this manually, then watch an AI agent handle the same case and compare strategies.</p>
+
+  <blockquote><strong>No coding required.</strong> Every step uses dropdown menus and Run buttons.
+  After each query, you'll see what FHIR request was made and what came back.</blockquote>
+</div>
+
+<!-- ===== LEARNING OBJECTIVES ===== -->
+<div class="md-cell">
+  <h2>What You'll Practice</h2>
+  <ul>
+    <li>Describe the <strong>agent loop</strong> (observe → decide → act → update → repeat)</li>
+    <li>Choose which <strong>FHIR resource</strong> to query based on what evidence is missing</li>
+    <li>Understand how clinical questions map to <strong>structured FHIR queries</strong></li>
+    <li>Explain why a <strong>single data point</strong> is not enough for classification</li>
+    <li>Decide when evidence is <strong>sufficient</strong> to answer</li>
+    <li>Compare your query strategy with an AI agent's approach</li>
+  </ul>
+</div>
+
+<!-- ===== SCENARIO ===== -->
+<div class="md-cell">
+  <h2>The Clinical Scenario</h2>
+  <p><strong>Setting:</strong> You are an informatics fellow reviewing a cohort of
+  younger patients (age &le; 35) with a diabetes diagnosis in a synthetic FHIR server.</p>
+
+  <p><strong>Problem:</strong> Some patients may have been labeled with the wrong
+  diabetes type. Type 1 and Type 2 diabetes require different management, so accurate classification matters.</p>
+
+  <p><strong>Your task:</strong> For each patient, query the FHIR server and decide:</p>
+  <ul>
+    <li><strong>Likely Type 1</strong> — evidence supports autoimmune diabetes</li>
+    <li><strong>Likely Type 2</strong> — evidence supports insulin resistance pattern</li>
+    <li><strong>Unclear</strong> — evidence is insufficient or conflicting</li>
+  </ul>
+</div>
+
+<!-- ===== YOUR TOOLKIT ===== -->
+<div class="md-cell">
+  <h2>Your Toolkit: FHIR Queries as Agent Tools</h2>
+  <p>An agent's "tools" are the actions it can take. In this exercise, each tool is a
+  <strong>FHIR query</strong> — a structured request to a specific resource endpoint on the EHR server.
+  Here's what you have available:</p>
+</div>
+
+<div class="toolkit-card">
+  <div class="card-header">Available Tools</div>
+  <div class="card-body">
+    <table>
+      <tr>
+        <th style="width:180px">Tool</th>
+        <th style="width:200px">FHIR Resource</th>
+        <th>What It Returns</th>
+        <th>Why You'd Use It</th>
+      </tr>
+      <tr>
+        <td><strong>Get demographics</strong></td>
+        <td><span class="fhir-resource">GET /Patient/{id}</span></td>
+        <td>Name, age, gender, date of birth</td>
+        <td>Basic context about who you're reviewing</td>
+      </tr>
+      <tr>
+        <td><strong>Get problem list</strong></td>
+        <td><span class="fhir-resource">GET /Condition?subject=Patient/{id}</span></td>
+        <td>All diagnoses and their clinical status</td>
+        <td>See the full diagnostic picture — autoimmune conditions, complications</td>
+      </tr>
+      <tr>
+        <td><strong>Get labs</strong></td>
+        <td><span class="fhir-resource">GET /Observation?subject=Patient/{id}&amp;code={LOINC}</span></td>
+        <td>Lab results sorted by date (most recent first)</td>
+        <td>C-peptide (T1 vs T2), HbA1c (control), BMI (resistance pattern)</td>
+      </tr>
+      <tr>
+        <td><strong>Get medications</strong></td>
+        <td><span class="fhir-resource">GET /MedicationRequest?subject=Patient/{id}</span></td>
+        <td>Medication names, status, dates</td>
+        <td>Insulin-only → T1 pattern; oral agents → T2 pattern</td>
+      </tr>
+      <tr>
+        <td><strong>Get encounters</strong></td>
+        <td><span class="fhir-resource">GET /Encounter?subject=Patient/{id}</span></td>
+        <td>Visit type, class (ambulatory/inpatient), dates</td>
+        <td>Care context — how recently and where they were seen</td>
+      </tr>
+    </table>
+    <p style="font-size:13px; color:#5f6368; margin-top:10px;">
+      <strong>FHIR coding systems used:</strong>
+      SNOMED CT for diagnoses (46635009 = Type 1 DM, 44054006 = Type 2 DM) &bull;
+      LOINC for labs (4548-4 = HbA1c, 1986-9 = C-peptide, 39156-5 = BMI)
+    </p>
+  </div>
+</div>
+
+<div class="md-cell">
+  <blockquote>
+    <strong>Key insight:</strong> An AI agent has exactly these same tools. The difference between
+    you and the AI isn't the tools — it's the <em>strategy</em> for choosing which tool to use next
+    and when to stop.
+  </blockquote>
+</div>
+
+
+<!-- ===== FORM: Setup ===== -->
+<div class="form-cell">
+  <div class="form-header">
+    <button class="run-btn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+    <span class="form-title">Step 1: Connect to the FHIR server</span>
+  </div>
+  <div class="output-area">
+    <h3>Connection Status</h3>
+    <table>
+      <tr><th>Component</th><th>Status</th><th>Detail</th></tr>
+      <tr>
+        <td>FHIR Server</td>
+        <td><span class="status-badge badge-green">Connected</span></td>
+        <td><code style="font-size:12px">lfh-fhir.eastus2.cloudapp.azure.com</code> &bull; FHIR R4</td>
+      </tr>
+      <tr>
+        <td>Patient records</td>
+        <td>1,027</td>
+        <td>Synthetic cohort with diabetes phenotypes</td>
+      </tr>
+      <tr>
+        <td>AI Coach</td>
+        <td><span class="status-badge badge-green">Ready</span></td>
+        <td>Claude (optional — for coaching suggestions)</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<!-- ===== FORM: Candidate Pool ===== -->
+<div class="form-cell">
+  <div class="form-header">
+    <button class="run-btn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+    <span class="form-title">Step 2: Build candidate pool from FHIR</span>
+  </div>
+  <div class="output-area">
+    <div class="fhir-query">
+      <span class="label">FHIR Query</span>
+      GET /Condition?code=46635009&amp;_count=80 → then GET /Patient/{id} for each match ≤ 35 years
+    </div>
+    <div class="fhir-query">
+      <span class="label">FHIR Query</span>
+      GET /Condition?code=44054006&amp;_count=80 → then GET /Patient/{id} for each match ≤ 35 years
+    </div>
+
+    <h2 style="margin-top:16px;">Your Patient Candidates</h2>
+    <p>These younger patients were found by querying <span class="fhir-resource">Condition</span>
+    resources for diabetes SNOMED codes, then filtering to age &le; 35 via <span class="fhir-resource">Patient</span> demographics.
+    The <strong>Seed Group</strong> shows which diagnosis code matched — but that label might not be the whole story.</p>
+
+    <table>
+      <tr><th>Case #</th><th>Name</th><th>Age</th><th>Gender</th><th>Seed Group</th></tr>
+      <tr><td>1</td><td>Aaron Martinez</td><td>22</td><td>male</td><td>Likely T1D cohort</td></tr>
+      <tr><td>2</td><td>Sarah Kim</td><td>28</td><td>female</td><td>Likely T1D cohort</td></tr>
+      <tr><td>3</td><td>James Wilson</td><td>31</td><td>male</td><td>Likely T1D cohort</td></tr>
+      <tr><td>4</td><td>Maria Garcia</td><td>24</td><td>female</td><td>Likely T2D cohort</td></tr>
+      <tr><td>5</td><td>David Chen</td><td>30</td><td>male</td><td>Likely T2D cohort</td></tr>
+      <tr><td>6</td><td>Emily Johnson</td><td>33</td><td>female</td><td>Likely T2D cohort</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ===== INSTRUCTIONS ===== -->
+<div class="md-cell">
+  <h2>Time to Be the Agent</h2>
+  <p>You now have a pool of patients. Here's the exercise:</p>
+  <ol>
+    <li><strong>Select a case</strong> — pick a patient number</li>
+    <li><strong>Gather evidence</strong> — choose FHIR queries from the dropdown, one at a time</li>
+    <li><strong>Watch your dashboard</strong> — it tracks what you've collected and what's missing</li>
+    <li><strong>Optionally ask the AI coach</strong> — it suggests one next query</li>
+    <li><strong>Record your answer</strong> — classify the patient with supporting evidence</li>
+    <li><strong>Compare with the AI agent</strong> — watch it query the same patient</li>
+  </ol>
+  <blockquote><strong>Think before you query.</strong> An agent that runs every available tool
+  wastes time. Pick the query most likely to change your assessment.</blockquote>
+</div>
+
+<!-- ===== FORM: Select Case ===== -->
+<div class="form-cell">
+  <div class="form-header">
+    <button class="run-btn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+    <span class="form-title">Step 3: Select a case to investigate</span>
+  </div>
+  <div class="form-body">
+    <div class="form-field">
+      <label>case_number</label>
+      <input type="number" value="1" min="1" max="6">
+    </div>
+  </div>
+  <div class="output-area">
+    <h2>Case 1 Selected</h2>
+    <p><strong>Patient:</strong> Aaron Martinez (Age 22, male) &bull; ID: <code>17b512da</code></p>
+    <p><strong>Clinical question:</strong> Is this patient more consistent with Type 1 diabetes,
+    Type 2 diabetes, or still unclear?</p>
+    <p>Use the <strong>Gather Evidence</strong> cell below to start querying.</p>
+  </div>
+</div>
+
+<!-- ===== EVIDENCE INSTRUCTIONS ===== -->
+<div class="md-cell">
+  <h2>Gather Evidence</h2>
+  <p>Each time you run the cell below, you execute <strong>one FHIR query</strong> — one "agent turn."
+  Change the dropdown to select which query to run next, then click Run.</p>
+  <p>After each query, you'll see:</p>
+  <ul>
+    <li>The <strong>FHIR request</strong> that was made</li>
+    <li>The <strong>results</strong> formatted as a table</li>
+    <li>Your <strong>Agent Dashboard</strong> with collected evidence, gaps, and step history</li>
+  </ul>
+</div>
+
+<!-- ===== FORM: Gather Evidence (showing "Get demographics" result) ===== -->
+<div class="form-cell">
+  <div class="form-header">
+    <button class="run-btn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+    <span class="form-title">Step 4: Gather evidence (change dropdown, click Run, repeat)</span>
+  </div>
+  <div class="form-body">
+    <div class="form-field">
+      <label>action</label>
+      <select>
+        <option selected>Get demographics</option>
+        <option>Get full problem list</option>
+        <option>Get labs</option>
+        <option>Get medications</option>
+        <option>Get encounters</option>
+      </select>
+    </div>
+    <div class="form-field">
+      <label>lab_type</label>
+      <select>
+        <option>HbA1c</option>
+        <option selected>C-peptide</option>
+        <option>BMI</option>
+        <option>Creatinine</option>
+        <option>eGFR</option>
+      </select>
+    </div>
+  </div>
+  <div class="output-area">
+    <div class="fhir-query">
+      <span class="label">FHIR Query</span>
+      GET /Patient/17b512da
+    </div>
+
+    <h3>Demographics</h3>
+    <table>
+      <tr><th>Field</th><th>Value</th></tr>
+      <tr><td>Name</td><td>Aaron Martinez</td></tr>
+      <tr><td>Age</td><td>22</td></tr>
+      <tr><td>Gender</td><td>male</td></tr>
+      <tr><td>Date of Birth</td><td>2004-03-15</td></tr>
+    </table>
+
+    <div class="dashboard">
+      <h2>Your Agent Dashboard</h2>
+      <p><strong>Clinical Question:</strong> Is this patient more consistent with Type 1 diabetes, Type 2 diabetes, or still unclear?</p>
+      <p><strong>Patient:</strong> Aaron Martinez (Age 22, male)</p>
+
+      <h3>Evidence Collected</h3>
+      <table>
+        <tr><th>Category</th><th>FHIR Resource</th><th>Finding</th></tr>
+        <tr>
+          <td>Demographics</td>
+          <td><span class="fhir-resource">Patient</span></td>
+          <td>Age 22, male, DOB 2004-03-15</td>
+        </tr>
+      </table>
+
+      <h3>Still Needed</h3>
+      <ul class="missing-list">
+        <li>Problem list / diagnosis context — <em>query</em> <span class="fhir-resource">Condition</span></li>
+        <li>C-peptide level — <em>query</em> <span class="fhir-resource">Observation</span> <em>with LOINC 1986-9</em></li>
+        <li>Medication pattern — <em>query</em> <span class="fhir-resource">MedicationRequest</span></li>
+        <li>BMI / insulin-resistance pattern — <em>query</em> <span class="fhir-resource">Observation</span> <em>with LOINC 39156-5</em></li>
+      </ul>
+
+      <h3>Steps Taken</h3>
+      <table>
+        <tr><th>#</th><th>FHIR Query</th><th>Finding</th></tr>
+        <tr><td>1</td><td><span class="fhir-resource">GET /Patient/17b512da</span></td><td>Age 22, male</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Second evidence turn — showing labs result ===== -->
+<div style="border-left: 3px solid #1a73e8; padding-left: 16px; margin: 20px 0;">
+  <p style="font-size: 13px; color: #1967d2; font-weight: 600;">Example: after selecting "Get labs" → "C-peptide" and clicking Run again:</p>
+</div>
+
+<div class="form-cell">
+  <div class="form-header">
+    <button class="run-btn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+    <span class="form-title">Step 4: Gather evidence (change dropdown, click Run, repeat)</span>
+  </div>
+  <div class="form-body">
+    <div class="form-field">
+      <label>action</label>
+      <select>
+        <option>Get demographics</option>
+        <option>Get full problem list</option>
+        <option selected>Get labs</option>
+        <option>Get medications</option>
+        <option>Get encounters</option>
+      </select>
+    </div>
+    <div class="form-field">
+      <label>lab_type</label>
+      <select>
+        <option>HbA1c</option>
+        <option selected>C-peptide</option>
+        <option>BMI</option>
+        <option>Creatinine</option>
+        <option>eGFR</option>
+      </select>
+    </div>
+  </div>
+  <div class="output-area">
+    <div class="fhir-query">
+      <span class="label">FHIR Query</span>
+      GET /Observation?subject=Patient/17b512da&amp;code=1986-9&amp;_sort=-date&amp;_count=5
+    </div>
+    <p style="font-size:12px; color:#5f6368; margin:2px 0 10px 0;">
+      <span class="fhir-resource">Observation</span> filtered by LOINC <strong>1986-9</strong> (C-peptide) &bull; sorted newest first
+    </p>
+
+    <h3>C-peptide Results</h3>
+    <table>
+      <tr><th>Value</th><th>Unit</th><th>Date</th></tr>
+      <tr><td>0.3</td><td>ng/mL</td><td>2025-11-20</td></tr>
+      <tr><td>0.4</td><td>ng/mL</td><td>2025-05-12</td></tr>
+    </table>
+
+    <div class="dashboard">
+      <h2>Your Agent Dashboard</h2>
+      <p><strong>Clinical Question:</strong> Is this patient more consistent with Type 1 diabetes, Type 2 diabetes, or still unclear?</p>
+      <p><strong>Patient:</strong> Aaron Martinez (Age 22, male)</p>
+
+      <h3>Evidence Collected</h3>
+      <table>
+        <tr><th>Category</th><th>FHIR Resource</th><th>Finding</th></tr>
+        <tr>
+          <td>Demographics</td>
+          <td><span class="fhir-resource">Patient</span></td>
+          <td>Age 22, male, DOB 2004-03-15</td>
+        </tr>
+        <tr>
+          <td>C-peptide</td>
+          <td><span class="fhir-resource">Observation</span></td>
+          <td>0.3 ng/mL (2025-11-20) — <strong>low</strong></td>
+        </tr>
+      </table>
+
+      <h3>Still Needed</h3>
+      <ul class="missing-list">
+        <li>Problem list / diagnosis context — <em>query</em> <span class="fhir-resource">Condition</span></li>
+        <li>Medication pattern — <em>query</em> <span class="fhir-resource">MedicationRequest</span></li>
+        <li>BMI / insulin-resistance pattern — <em>query</em> <span class="fhir-resource">Observation</span> <em>with LOINC 39156-5</em></li>
+      </ul>
+
+      <h3>Steps Taken</h3>
+      <table>
+        <tr><th>#</th><th>FHIR Query</th><th>Finding</th></tr>
+        <tr><td>1</td><td><span class="fhir-resource">GET /Patient/17b512da</span></td><td>Age 22, male</td></tr>
+        <tr><td>2</td><td><span class="fhir-resource">GET /Observation?code=1986-9</span></td><td>C-peptide: 0.3 ng/mL</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+
+<!-- ===== COACH ===== -->
+<div class="md-cell">
+  <h2>Optional: Ask the AI Coach</h2>
+  <p>The AI coach sees your current evidence state — the same dashboard you see — and
+  suggests one next FHIR query. You're still in control of what to actually run.</p>
+</div>
+
+<div class="form-cell">
+  <div class="form-header">
+    <button class="run-btn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+    <span class="form-title">Step 5: Ask the AI Coach for a suggestion (optional)</span>
+  </div>
+  <div class="output-area">
+    <div class="coach-box">
+      <h3 style="margin-top:0;">AI Coach Suggestion</h3>
+      <p><strong>Recommended next query: Get medications</strong>
+      (<span class="fhir-resource">MedicationRequest</span>)</p>
+      <p>You have demographics and a low C-peptide (0.3 ng/mL), which leans toward Type 1.
+      Checking medications next would strengthen or challenge this: if the patient is on
+      <em>insulin only</em> (no oral hypoglycemics), that's consistent with Type 1. If they're
+      on metformin or a GLP-1 agonist, it might suggest a more complex picture.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ===== RECORD ANSWER ===== -->
+<div class="md-cell">
+  <h2>Record Your Answer</h2>
+  <p>When you've gathered enough evidence, record your classification below.
+  <strong>Cite specific FHIR findings</strong> — "C-peptide was 0.3 ng/mL" is better than "labs looked Type 1."</p>
+</div>
+
+<div class="form-cell">
+  <div class="form-header">
+    <button class="run-btn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+    <span class="form-title">Step 6: Record your answer</span>
+  </div>
+  <div class="form-body">
+    <div class="form-field">
+      <label>classification</label>
+      <select>
+        <option selected>Likely Type 1</option>
+        <option>Likely Type 2</option>
+        <option>Unclear / needs more review</option>
+      </select>
+    </div>
+    <div class="form-field">
+      <label>rationale</label>
+      <input type="text" value="Low C-peptide (0.3 ng/mL), insulin-only regimen, age 22 with no oral agents">
+    </div>
+  </div>
+  <div class="output-area">
+    <h2>Your Answer Recorded</h2>
+    <p><strong>Patient:</strong> Aaron Martinez (Age 22, male)</p>
+    <p><strong>Classification:</strong> Likely Type 1</p>
+    <p><strong>Rationale:</strong> Low C-peptide (0.3 ng/mL), insulin-only regimen, age 22 with no oral agents</p>
+    <p><strong>FHIR queries used:</strong> 4</p>
+    <hr>
+    <p><em>Scroll down to watch the AI agent work the same case.</em></p>
+  </div>
+</div>
+
+<!-- ===== AI AGENT ===== -->
+<div class="md-cell">
+  <h2>Watch the AI Agent</h2>
+  <p>The AI agent receives the same clinical question and the same FHIR tools.
+  Watch which queries it chooses, in what order, and how its reasoning compares to yours.</p>
+</div>
+
+<div class="form-cell">
+  <div class="form-header">
+    <button class="run-btn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+    <span class="form-title">Step 7: Watch the AI agent work the same case</span>
+  </div>
+  <div class="output-area">
+    <h2>AI Agent Run</h2>
+    <p><em>The AI agent is investigating the same patient using the same FHIR tools...</em></p>
+
+    <div class="agent-step">
+      <strong>Step 1</strong>
+      <div>
+        <span class="fhir-resource">GET /Patient/17b512da</span>
+        <span style="color:#5f6368; margin-left:8px;">→ demographics</span>
+      </div>
+    </div>
+    <div class="agent-step">
+      <strong>Step 2</strong>
+      <div>
+        <span class="fhir-resource">GET /Condition?subject=Patient/17b512da</span>
+        <span style="color:#5f6368; margin-left:8px;">→ problem list</span>
+      </div>
+    </div>
+    <div class="agent-step">
+      <strong>Step 3</strong>
+      <div>
+        <span class="fhir-resource">GET /Observation?subject=Patient/17b512da&amp;code=1986-9</span>
+        <span style="color:#5f6368; margin-left:8px;">→ C-peptide</span>
+      </div>
+    </div>
+    <div class="agent-step">
+      <strong>Step 4</strong>
+      <div>
+        <span class="fhir-resource">GET /MedicationRequest?subject=Patient/17b512da</span>
+        <span style="color:#5f6368; margin-left:8px;">→ medications</span>
+      </div>
+    </div>
+    <div class="agent-step">
+      <strong>Step 5</strong>
+      <div>
+        <span class="fhir-resource">GET /Observation?subject=Patient/17b512da&amp;code=39156-5</span>
+        <span style="color:#5f6368; margin-left:8px;">→ BMI</span>
+      </div>
+    </div>
+
+    <hr>
+    <h3>AI Agent's Answer</h3>
+    <p>Based on the evidence gathered, this patient is <strong>likely Type 1 diabetes</strong>:</p>
+    <ul>
+      <li><strong>C-peptide</strong> (<span class="fhir-resource">Observation</span>, LOINC 1986-9): 0.3 ng/mL — very low, consistent with autoimmune beta-cell destruction</li>
+      <li><strong>Medications</strong> (<span class="fhir-resource">MedicationRequest</span>): Insulin glargine + insulin lispro only — no oral hypoglycemics</li>
+      <li><strong>BMI</strong> (<span class="fhir-resource">Observation</span>, LOINC 39156-5): 22.1 kg/m² — normal, not consistent with insulin resistance</li>
+      <li><strong>Problem list</strong> (<span class="fhir-resource">Condition</span>): Type 1 diabetes mellitus confirmed; no competing diagnoses</li>
+    </ul>
+
+    <h3>AI Agent's Query Log</h3>
+    <table>
+      <tr><th>Step</th><th>FHIR Query</th><th>Resource</th><th>Key Finding</th></tr>
+      <tr><td>1</td><td><span class="fhir-resource">GET /Patient/17b512da</span></td><td>Patient</td><td>Age 22, male</td></tr>
+      <tr><td>2</td><td><span class="fhir-resource">GET /Condition?subject=...</span></td><td>Condition</td><td>T1DM, no complications</td></tr>
+      <tr><td>3</td><td><span class="fhir-resource">GET /Observation?code=1986-9</span></td><td>Observation</td><td>C-peptide 0.3 ng/mL</td></tr>
+      <tr><td>4</td><td><span class="fhir-resource">GET /MedicationRequest?subject=...</span></td><td>MedicationRequest</td><td>Insulin only</td></tr>
+      <tr><td>5</td><td><span class="fhir-resource">GET /Observation?code=39156-5</span></td><td>Observation</td><td>BMI 22.1</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ===== DEBRIEF ===== -->
+<div class="form-cell">
+  <div class="form-header">
+    <button class="run-btn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+    <span class="form-title">Step 8: Compare your reasoning with the AI</span>
+  </div>
+  <div class="output-area">
+    <h2>Comparison &amp; Reflection</h2>
+
+    <h3>Your Answer</h3>
+    <p><strong>Classification:</strong> Likely Type 1</p>
+    <p><strong>Rationale:</strong> Low C-peptide (0.3 ng/mL), insulin-only regimen, age 22 with no oral agents</p>
+    <p><strong>FHIR queries used:</strong> 4</p>
+
+    <h3>Discussion Questions</h3>
+    <ol>
+      <li><strong>Query strategy:</strong> Did you and the AI choose the same FHIR resources? In what order?
+      Which query gave you the most decision-changing information?</li>
+      <li><strong>Stopping point:</strong> Did you query more or fewer resources than the AI?
+      Could either of you have stopped earlier with a confident answer?</li>
+      <li><strong>FHIR resource value:</strong> Which FHIR resource type
+      (<span class="fhir-resource">Patient</span>,
+      <span class="fhir-resource">Condition</span>,
+      <span class="fhir-resource">Observation</span>,
+      <span class="fhir-resource">MedicationRequest</span>,
+      <span class="fhir-resource">Encounter</span>)
+      was most informative for this question? Would that change for a different clinical question?</li>
+      <li><strong>Uncertainty:</strong> Did either you or the AI express appropriate uncertainty?
+      What additional FHIR data (if it existed) would resolve the ambiguity?</li>
+      <li><strong>The agent loop:</strong> Now that you've been the agent, describe the loop:
+      <em>observe state → choose FHIR query → execute → update evidence → repeat or answer.</em>
+      What makes this hard to do well?</li>
+    </ol>
+
+    <h3>Your Query Log</h3>
+    <table>
+      <tr><th>#</th><th>FHIR Query</th><th>Finding</th></tr>
+      <tr><td>1</td><td><span class="fhir-resource">GET /Patient/17b512da</span></td><td>Age 22, male</td></tr>
+      <tr><td>2</td><td><span class="fhir-resource">GET /Observation?code=1986-9</span></td><td>C-peptide: 0.3 ng/mL</td></tr>
+      <tr><td>3</td><td><span class="fhir-resource">GET /MedicationRequest?subject=...</span></td><td>Insulin glargine, insulin lispro</td></tr>
+      <tr><td>4</td><td>Final answer</td><td>Likely Type 1</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ===== WRAP-UP ===== -->
+<div class="md-cell">
+  <h2>Wrap-Up</h2>
+  <p>You've experienced the core <strong>agent loop</strong> from the inside:</p>
+  <pre><code>while not confident_enough:
+    observe current evidence (what FHIR data do I have?)
+    choose next FHIR query (which resource will be most informative?)
+    execute the query (GET /Resource?parameters...)
+    update assessment (does this change my answer?)
+</code></pre>
+  <p>This is exactly what an AI agent does — the only difference is who chooses the next query.</p>
+  <p><strong>To investigate another patient:</strong> Go back to Step 3, change the case number,
+  and run through again. Different patients have different evidence patterns.</p>
+</div>
+
+</body>
+</html>

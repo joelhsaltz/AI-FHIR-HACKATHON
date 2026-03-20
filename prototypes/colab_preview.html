@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>You Are the Agent — Colab Preview</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Google Sans', 'Roboto', Arial, sans-serif;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 24px;
+    background: #fff;
+    color: #202124;
+    line-height: 1.6;
+  }
+  .notebook-header {
+    background: #f8f9fa;
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin-bottom: 24px;
+    border: 1px solid #dadce0;
+    font-size: 13px;
+    color: #5f6368;
+  }
+  .md-cell {
+    padding: 8px 0 16px 0;
+  }
+  .md-cell h1 { font-size: 28px; color: #202124; margin: 0 0 4px 0; }
+  .md-cell h2 { font-size: 22px; color: #202124; margin: 24px 0 12px 0; border-bottom: 1px solid #e8eaed; padding-bottom: 8px; }
+  .md-cell h3 { font-size: 17px; color: #202124; margin: 16px 0 8px 0; }
+  .md-cell ul, .md-cell ol { padding-left: 24px; }
+  .md-cell li { margin-bottom: 4px; }
+  .md-cell blockquote {
+    border-left: 4px solid #1a73e8;
+    margin: 12px 0;
+    padding: 8px 16px;
+    background: #e8f0fe;
+    border-radius: 0 4px 4px 0;
+    color: #174ea6;
+  }
+  .md-cell code {
+    background: #f1f3f4;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: 'Roboto Mono', monospace;
+  }
+  .md-cell pre {
+    background: #f8f9fa;
+    padding: 16px;
+    border-radius: 8px;
+    border: 1px solid #e8eaed;
+    overflow-x: auto;
+  }
+  .md-cell pre code { background: none; padding: 0; }
+  .form-cell {
+    border: 1px solid #dadce0;
+    border-radius: 8px;
+    margin: 12px 0;
+    overflow: hidden;
+  }
+  .form-header {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e8eaed;
+    gap: 8px;
+  }
+  .run-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: none;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #5f6368;
+  }
+  .run-btn:hover { background: #e8eaed; }
+  .run-btn svg { width: 18px; height: 18px; }
+  .form-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: #202124;
+  }
+  .form-body {
+    padding: 16px;
+  }
+  .form-field {
+    margin: 8px 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .form-field label {
+    font-size: 13px;
+    color: #5f6368;
+    min-width: 100px;
+  }
+  .form-field select, .form-field input[type="text"], .form-field input[type="number"] {
+    padding: 6px 12px;
+    border: 1px solid #dadce0;
+    border-radius: 4px;
+    font-size: 14px;
+    background: #fff;
+    color: #202124;
+    min-width: 250px;
+  }
+  .form-field input[type="text"] { min-width: 400px; }
+  .output-area {
+    padding: 16px;
+    background: #fff;
+    border-top: 1px solid #f1f3f4;
+  }
+  .output-area table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 8px 0;
+  }
+  .output-area th {
+    background: #f8f9fa;
+    text-align: left;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: #5f6368;
+    border-bottom: 2px solid #e8eaed;
+  }
+  .output-area td {
+    padding: 8px 12px;
+    font-size: 14px;
+    border-bottom: 1px solid #f1f3f4;
+  }
+  .status-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .badge-green { background: #e6f4ea; color: #137333; }
+  .badge-blue { background: #e8f0fe; color: #1967d2; }
+  .badge-amber { background: #fef7e0; color: #b06000; }
+  .dashboard {
+    background: #f8f9fa;
+    border: 1px solid #e8eaed;
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin: 16px 0;
+  }
+  .dashboard h2 { margin-top: 0; font-size: 18px; border: none; padding: 0; }
+  .dashboard h3 { font-size: 15px; margin-top: 12px; }
+  .missing-list { color: #d93025; }
+  .missing-list li { margin: 2px 0; }
+  .coach-box {
+    background: #e8f0fe;
+    border-left: 4px solid #1a73e8;
+    padding: 12px 16px;
+    border-radius: 0 8px 8px 0;
+    margin: 12px 0;
+  }
+  .agent-step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    font-size: 14px;
+    color: #5f6368;
+  }
+  .agent-step strong { color: #202124; }
+  .divider { border-top: 2px solid #e8eaed; margin: 24px 0; }
+  .section-label {
+    display: inline-block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #80868b;
+    margin-bottom: 4px;
+  }
+</style>
+</head>
+<body>
+
+<div class="notebook-header">
+  This preview simulates what students see when they open the notebook in Google Colab.
+  Code cells appear as titled form bars — students click <strong>Run</strong> and interact via dropdowns.
+</div>
+
+<!-- ========== MARKDOWN: Welcome ========== -->
+<div class="md-cell">
+  <h1>You Are the Agent</h1>
+  <h2>A Clinical Decision-Making Exercise</h2>
+  <p>In this exercise, <strong>you temporarily play the role of a clinical AI agent.</strong>
+  You have a patient to review and a clinical question to answer.
+  Your tools are queries against an electronic health record (FHIR server).
+  Your job is to:</p>
+  <ol>
+    <li><strong>Choose</strong> which evidence to gather</li>
+    <li><strong>Review</strong> what comes back</li>
+    <li><strong>Decide</strong> when you have enough to answer</li>
+    <li><strong>Record</strong> your classification with supporting evidence</li>
+  </ol>
+  <p>Then you'll watch an AI agent handle the same case and compare strategies.</p>
+  <blockquote><strong>No coding required.</strong> Every step uses dropdown menus and Run buttons.
+  The code behind each cell is hidden — focus on the clinical reasoning, not the Python.</blockquote>
+</div>
+
+<!-- ========== MARKDOWN: Learning Objectives ========== -->
+<div class="md-cell">
+  <h2>What You'll Practice</h2>
+  <ul>
+    <li>Describe an <strong>agent loop</strong> in plain language (observe → decide → act → update → repeat)</li>
+    <li>Choose the <strong>next query</strong> based on what evidence is still missing</li>
+    <li>Explain why a <strong>single datapoint</strong> is not enough for classification</li>
+    <li>Decide when evidence is <strong>sufficient</strong> versus when you need more</li>
+    <li>Compare your strategy with an AI agent's approach</li>
+  </ul>
+</div>
+
+<!-- ========== MARKDOWN: Scenario ========== -->
+<div class="md-cell">
+  <h2>The Clinical Scenario</h2>
+  <p><strong>Setting:</strong> You are an informatics fellow helping review a cohort of
+  younger patients (age ≤ 35) with a diabetes diagnosis.</p>
+  <p><strong>Problem:</strong> Some of these patients may have been labeled with the wrong
+  diabetes type, or the label may be incomplete. Type 1 and Type 2 diabetes
+  require different management strategies, so accurate classification matters.</p>
+  <p><strong>Your task:</strong> For each patient, gather evidence from the EHR and decide:</p>
+  <ul>
+    <li><strong>Likely Type 1</strong> — evidence supports autoimmune diabetes</li>
+    <li><strong>Likely Type 2</strong> — evidence supports insulin resistance pattern</li>
+    <li><strong>Unclear</strong> — evidence is insufficient or conflicting</li>
+  </ul>
+  <p><strong>Key evidence to look for:</strong></p>
+  <ul>
+    <li>C-peptide level (low → Type 1, normal/high → Type 2)</li>
+    <li>Medication pattern (insulin-only vs. oral agents)</li>
+    <li>BMI (lower → Type 1, higher → Type 2, but not definitive)</li>
+    <li>Problem list context (other autoimmune conditions, complications)</li>
+  </ul>
+</div>
+
+<!-- ========== FORM CELL: Setup (silent) ========== -->
+<div class="form-cell">
+  <div class="form-header">
+    <button class="run-btn">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+    </button>
+    <span class="form-title">Step 1: Install packages and connect to servers (click Run, then wait)</span>
+  </div>
+</div>
+
+<!-- ========== FORM CELL: Verify ========== -->
+<div class="form-cell">
+  <div class="form-header">
+    <button class="run-btn">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+    </button>
+    <span class="form-title">Step 2: Verify connection</span>
+  </div>
+  <div class="output-area">
+    <h3>Connection Status</h3>
+    <table>
+      <tr><th>Component</th><th>Status</th></tr>
+      <tr><td>FHIR Server</td><td><span class="status-badge badge-green">Connected</span></td></tr>
+      <tr><td>Patient records</td><td>1,027</td></tr>
+      <tr><td>AI Coach</td><td><span class="status-badge badge-green">Ready</span></td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ========== FORM CELL: Tools ========== -->
+<div class="form-cell">
+  <div class="form-header">
+    <button class="run-btn">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+    </button>
+    <span class="form-title">Step 3: Load clinical tools (click Run)</span>
+  </div>
+  <div class="output-area">
+    <p><strong>Clinical tools loaded.</strong> Proceed to the next step.</p>
+  </div>
+</div>
+
+<!-- ========== FORM CELL: Candidate Pool ========== -->
+<div class="form-cell">
+  <div class="form-header">
+    <button class="run-btn">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+    </button>
+    <span class="form-title">Step 4: Build candidate pool</span>
+  </div>
+  <div class="output-area">
+    <h2>Your Patient Candidates</h2>
+    <p>These younger patients have a diabetes diagnosis in their record.
+    The <strong>Seed Group</strong> shows which diagnosis code brought them into the pool
+    — but that label might not be the whole story. Your job is to gather evidence and decide for yourself.</p>
+    <table>
+      <tr><th>Case #</th><th>Name</th><th>Age</th><th>Gender</th><th>Seed Group</th></tr>
+      <tr><td>1</td><td>Aaron Martinez</td><td>22</td><td>male</td><td>Likely T1D cohort</td></tr>
+      <tr><td>2</td><td>Sarah Kim</td><td>28</td><td>female</td><td>Likely T1D cohort</td></tr>
+      <tr><td>3</td><td>James Wilson</td><td>31</td><td>male</td><td>Likely T1D cohort</td></tr>
+      <tr><td>4</td><td>Maria Garcia</td><td>24</td><td>female</td><td>Likely T2D cohort</td></tr>
+      <tr><td>5</td><td>David Chen</td><td>30</td><td>male</td><td>Likely T2D cohort</td></tr>
+      <tr><td>6</td><td>Emily Johnson</td><td>33</td><td>female</td><td>Likely T2D cohort</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ========== MARKDOWN: Instructions ========== -->
+<div class="md-cell">
+  <h2>Time to Be the Agent</h2>
+  <p>You now have a pool of patients. Here's how the exercise works:</p>
+  <ol>
+    <li><strong>Select a case</strong> — pick a patient number below</li>
+    <li><strong>Gather evidence</strong> — use the dropdown menu to query the EHR, one step at a time</li>
+    <li><strong>Watch your dashboard</strong> — it shows what you've collected and what's still missing</li>
+    <li><strong>Ask the AI coach</strong> (optional) — get a suggestion for your next step</li>
+    <li><strong>Record your answer</strong> — when you have enough evidence, make your call</li>
+    <li><strong>Compare with the AI</strong> — watch the AI agent work the same case</li>
+  </ol>
+  <blockquote><strong>Tip:</strong> There is no single "right" order. But think about which evidence
+  would be most informative <em>before</em> you gather it.</blockquote>
+</div>
+
+<!-- ========== FORM CELL: Select Case ========== -->
+<div class="form-cell">
+  <div class="form-header">
+    <button class="run-btn">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+    </button>
+    <span class="form-title">Step 5: Select a case to investigate</span>
+  </div>
+  <div class="form-body">
+    <div class="form-field">
+      <label>case_number</label>
+      <input type="number" value="1" min="1" max="6">
+    </div>
+  </div>
+  <div class="output-area">
+    <h2>Case 1 Selected</h2>
+    <p><strong>Patient:</strong> Aaron Martinez (Age 22, male)</p>
+    <p><strong>Your question:</strong> Is this patient more consistent with Type 1 diabetes, Type 2 diabetes, or still unclear?</p>
+    <p>Use the <strong>Gather Evidence</strong> cell below to start investigating. Change the dropdown, click Run, and review what comes back.</p>
+  </div>
+</div>
+
+<!-- ========== MARKDOWN: Evidence Instructions ========== -->
+<div class="md-cell">
+  <h2>Gather Evidence</h2>
+  <p>Use the cell below to query the patient's record.
+  <strong>Change the dropdown</strong> to select a different action, then <strong>click Run</strong> again.</p>
+  <p>After each query, your <strong>Agent Dashboard</strong> updates to show:</p>
+  <ul>
+    <li>What evidence you've collected so far</li>
+    <li>What categories are still missing</li>
+    <li>Your step history</li>
+  </ul>
+  <blockquote><strong>Run this cell as many times as you want</strong> — each run is one "agent turn."</blockquote>
+</div>
+
+<!-- ========== FORM CELL: Gather Evidence ========== -->
+<div class="form-cell">
+  <div class="form-header">
+    <button class="run-btn">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+    </button>
+    <span class="form-title">Step 6: Gather evidence (change dropdown, click Run, repeat)</span>
+  </div>
+  <div class="form-body">
+    <div class="form-field">
+      <label>action</label>
+      <select>
+        <option selected>Get demographics</option>
+        <option>Get full problem list</option>
+        <option>Get labs</option>
+        <option>Get medications</option>
+        <option>Get encounters</option>
+      </select>
+    </div>
+    <div class="form-field">
+      <label>lab_type</label>
+      <select>
+        <option selected>HbA1c</option>
+        <option>C-peptide</option>
+        <option>BMI</option>
+        <option>Creatinine</option>
+        <option>eGFR</option>
+      </select>
+    </div>
+  </div>
+  <div class="output-area">
+    <h3>Demographics</h3>
+    <table>
+      <tr><th>Field</th><th>Value</th></tr>
+      <tr><td>Name</td><td>Aaron Martinez</td></tr>
+      <tr><td>Age</td><td>22</td></tr>
+      <tr><td>Gender</td><td>male</td></tr>
+      <tr><td>Date of Birth</td><td>2004-03-15</td></tr>
+    </table>
+
+    <div class="dashboard">
+      <h2>Your Agent Dashboard</h2>
+      <p><strong>Clinical Question:</strong> Is this patient more consistent with Type 1 diabetes, Type 2 diabetes, or still unclear?</p>
+      <p><strong>Patient:</strong> Aaron Martinez (Age 22, male)</p>
+
+      <h3>Evidence Collected</h3>
+      <table>
+        <tr><th>Category</th><th>Finding</th></tr>
+        <tr><td>Demographics</td><td>Age 22, male, DOB 2004-03-15</td></tr>
+      </table>
+
+      <h3>Still Needed</h3>
+      <ul class="missing-list">
+        <li>Problem list / diagnosis context</li>
+        <li>C-peptide level</li>
+        <li>Medication pattern</li>
+        <li>BMI / insulin-resistance pattern</li>
+      </ul>
+
+      <h3>Steps Taken</h3>
+      <table>
+        <tr><th>#</th><th>Action</th><th>Note</th></tr>
+        <tr><td>1</td><td>Get demographics</td><td>Age 22, male</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ========== MARKDOWN: Coach ========== -->
+<div class="md-cell">
+  <h2>Optional: Ask the AI Coach</h2>
+  <p>If you want a second opinion on what to do next, run the cell below.
+  The AI coach sees the same evidence state you see and suggests one next action.</p>
+  <p>This is <strong>not</strong> the same as having the AI do the whole task. You're still in control.</p>
+</div>
+
+<!-- ========== FORM CELL: Coach ========== -->
+<div class="form-cell">
+  <div class="form-header">
+    <button class="run-btn">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+    </button>
+    <span class="form-title">Step 7: Ask the AI Coach for a suggestion (optional)</span>
+  </div>
+  <div class="output-area">
+    <div class="coach-box">
+      <h3>AI Coach Suggestion</h3>
+      <p>I'd recommend <strong>Get labs → C-peptide</strong> next. You have the patient's demographics,
+      and now the most discriminating piece of evidence for Type 1 vs Type 2 in a young patient is
+      C-peptide level. A low C-peptide strongly suggests Type 1 (autoimmune beta-cell destruction),
+      while a normal or elevated level supports Type 2.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ========== MARKDOWN: Record Answer ========== -->
+<div class="md-cell">
+  <h2>Record Your Answer</h2>
+  <p>When you've gathered enough evidence, use the cell below to record your classification.</p>
+  <p><strong>Important:</strong> Write a brief rationale explaining <em>which specific evidence</em> supports your answer.
+  "I think it's Type 1" is not enough — cite the findings.</p>
+</div>
+
+<!-- ========== FORM CELL: Answer ========== -->
+<div class="form-cell">
+  <div class="form-header">
+    <button class="run-btn">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+    </button>
+    <span class="form-title">Step 8: Record your answer</span>
+  </div>
+  <div class="form-body">
+    <div class="form-field">
+      <label>classification</label>
+      <select>
+        <option selected>Likely Type 1</option>
+        <option>Likely Type 2</option>
+        <option>Unclear / needs more review</option>
+      </select>
+    </div>
+    <div class="form-field">
+      <label>rationale</label>
+      <input type="text" placeholder="What evidence supports your answer?" value="Low C-peptide (0.3 ng/mL), insulin-only regimen, age 22 with no obesity markers">
+    </div>
+  </div>
+  <div class="output-area">
+    <h2>Your Answer Recorded</h2>
+    <p><strong>Patient:</strong> Aaron Martinez (Age 22, male)</p>
+    <p><strong>Classification:</strong> Likely Type 1</p>
+    <p><strong>Rationale:</strong> Low C-peptide (0.3 ng/mL), insulin-only regimen, age 22 with no obesity markers</p>
+    <p><strong>Steps taken:</strong> 5</p>
+    <hr>
+    <p><em>Scroll down to see how the AI agent handles the same case.</em></p>
+  </div>
+</div>
+
+<!-- ========== MARKDOWN: AI Agent ========== -->
+<div class="md-cell">
+  <h2>Watch the AI Agent</h2>
+  <p>Now let's see how an AI agent handles the same case. The agent will:</p>
+  <ol>
+    <li>Read the same clinical question</li>
+    <li>Choose its own tools and gather evidence</li>
+    <li>Decide when it has enough information</li>
+    <li>Give its classification with supporting evidence</li>
+  </ol>
+  <p>Watch the tool calls as they happen and compare with your approach.</p>
+</div>
+
+<!-- ========== FORM CELL: Agent Run ========== -->
+<div class="form-cell">
+  <div class="form-header">
+    <button class="run-btn">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+    </button>
+    <span class="form-title">Step 9: Watch the AI agent work the same case</span>
+  </div>
+  <div class="output-area">
+    <h2>AI Agent Run</h2>
+    <p><em>The AI agent is now investigating the same patient...</em></p>
+    <div class="agent-step"><strong>Step 1:</strong> Called <code>get_patient</code> with <code>{"patient_id": "abc123"}</code></div>
+    <div class="agent-step"><strong>Step 2:</strong> Called <code>search_all_conditions</code> with <code>{"patient_id": "abc123"}</code></div>
+    <div class="agent-step"><strong>Step 3:</strong> Called <code>search_observations</code> with <code>{"patient_id": "abc123", "loinc_code": "1986-9"}</code></div>
+    <div class="agent-step"><strong>Step 4:</strong> Called <code>search_medications</code> with <code>{"patient_id": "abc123"}</code></div>
+    <div class="agent-step"><strong>Step 5:</strong> Called <code>search_observations</code> with <code>{"patient_id": "abc123", "loinc_code": "39156-5"}</code></div>
+    <hr>
+    <h3>AI Agent's Answer</h3>
+    <p>Based on the evidence gathered, this patient is <strong>likely Type 1 diabetes</strong>:</p>
+    <ul>
+      <li><strong>C-peptide:</strong> 0.3 ng/mL (very low, consistent with autoimmune beta-cell destruction)</li>
+      <li><strong>Medications:</strong> Insulin glargine + insulin lispro only (no oral hypoglycemics)</li>
+      <li><strong>BMI:</strong> 22.1 kg/m² (normal range, not consistent with insulin resistance)</li>
+      <li><strong>Age at diagnosis:</strong> Young adult (22), though age alone is not definitive</li>
+      <li><strong>Problem list:</strong> Type 1 diabetes mellitus confirmed; no competing diagnoses</li>
+    </ul>
+
+    <h3>AI Agent's Tool Calls</h3>
+    <table>
+      <tr><th>Step</th><th>Tool</th><th>Arguments</th></tr>
+      <tr><td>1</td><td>get_patient</td><td>{"patient_id": "abc123"}</td></tr>
+      <tr><td>2</td><td>search_all_conditions</td><td>{"patient_id": "abc123"}</td></tr>
+      <tr><td>3</td><td>search_observations</td><td>{"loinc_code": "1986-9"} (C-peptide)</td></tr>
+      <tr><td>4</td><td>search_medications</td><td>{"patient_id": "abc123"}</td></tr>
+      <tr><td>5</td><td>search_observations</td><td>{"loinc_code": "39156-5"} (BMI)</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ========== FORM CELL: Debrief ========== -->
+<div class="form-cell">
+  <div class="form-header">
+    <button class="run-btn">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+    </button>
+    <span class="form-title">Step 10: Compare your reasoning with the AI</span>
+  </div>
+  <div class="output-area">
+    <h2>Comparison &amp; Reflection</h2>
+
+    <h3>Your Answer</h3>
+    <p><strong>Classification:</strong> Likely Type 1</p>
+    <p><strong>Rationale:</strong> Low C-peptide (0.3 ng/mL), insulin-only regimen, age 22 with no obesity markers</p>
+    <p><strong>Total steps:</strong> 5</p>
+
+    <h3>Discussion Questions</h3>
+    <ol>
+      <li><strong>Evidence strategy:</strong> Did you and the AI gather the same evidence? In what order?</li>
+      <li><strong>Stopping point:</strong> Did you gather more or less evidence than the AI? Was either approach premature?</li>
+      <li><strong>Key signal:</strong> What was the single most informative piece of evidence?</li>
+      <li><strong>Uncertainty:</strong> Did either you or the AI express appropriate uncertainty when the evidence was ambiguous?</li>
+      <li><strong>Agent loop:</strong> Now that you've played the agent, can you describe the loop in your own words? (observe state → choose tool → update state → repeat)</li>
+    </ol>
+
+    <h3>Your Step Log</h3>
+    <table>
+      <tr><th>#</th><th>Action</th><th>Note</th></tr>
+      <tr><td>1</td><td>Get demographics</td><td>Age 22, male</td></tr>
+      <tr><td>2</td><td>Get problem list</td><td>3 conditions found</td></tr>
+      <tr><td>3</td><td>Get labs: C-peptide</td><td>0.3 ng/mL on 2025-11-20</td></tr>
+      <tr><td>4</td><td>Get medications</td><td>2 medications found</td></tr>
+      <tr><td>5</td><td>Final answer</td><td>Likely Type 1</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ========== MARKDOWN: Wrap-up ========== -->
+<div class="md-cell">
+  <h2>Wrap-Up</h2>
+  <p>You've just experienced the core <strong>agent loop</strong> from the inside:</p>
+  <pre><code>while not confident_enough:
+    observe current evidence state
+    choose the most informative next query
+    execute the query
+    update your evidence and assessment</code></pre>
+  <p>This is exactly what AI agents do — the only difference is who's making the decisions.</p>
+  <p><strong>To investigate another patient:</strong> Go back to Step 5, change the case number,
+  and run through the exercise again. Each case has different evidence patterns.</p>
+</div>
+
+</body>
+</html>

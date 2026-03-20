@@ -8,6 +8,61 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`colab-notebook-tools` skill** (`.claude/skills/colab-notebook-tools/`) —
+  Claude Code skill for the full Jupyter notebook lifecycle: create, edit,
+  validate locally, upload to Drive, execute in Colab, and visually verify via
+  Playwright screenshots.
+  - `scripts/colab-tools/auth_setup.py` — one-time Google sign-in using
+    `launch_persistent_context` + anti-detection args (Google blocks plain
+    Chromium automation)
+  - `scripts/colab-tools/colab_screenshot.py` — Colab screenshotter that scrolls
+    via `colab-scroller#notebook-main` element (5-position viewport capture)
+  - `scripts/colab-tools/nb_validate.py` — notebook structure + syntax validation
+  - `scripts/colab-tools/nb_exec_harness.py` — generic exec() harness for local testing
+  - Skill commands: `/nb-auth`, `/nb-validate`, `/nb-verify`
+  - Symlinked to `~/.claude/skills/` for global availability across projects
+  - Config at `~/.colab-notebook-tools/` (auth.json + browser_data/)
+
+### Fixed
+
+- **Google sign-in blocking** in `auth_setup.py` — Google detects Playwright's
+  Chromium as automation and refuses sign-in. Fixed by using
+  `launch_persistent_context` with `--disable-blink-features=AutomationControlled`
+  and `ignore_default_args=["--enable-automation"]`. Previously tried
+  `channel="chrome"`, plain persistent context, and incognito — all blocked.
+- **Colab section screenshots all identical** — `colab_screenshot.py` was using
+  `window.scrollTo()` which doesn't work in Colab (content is inside a custom
+  `<colab-scroller>` web component). Fixed by detecting and scrolling the
+  `colab-scroller#notebook-main` element directly.
+
+- **"You Are the Agent" demo prototype** (`prototypes/you_are_the_agent_demo.ipynb`)
+  — redesigned notebook with Colab form cells (`cellView: "form"` metadata).
+  All code is hidden behind titled Run-button bars with `#@param` dropdowns.
+  Students interact purely via menus; FHIR queries are surfaced in output
+  (showing actual `GET /Resource?params` requests and FHIR resource types)
+  so students learn the data layer without seeing Python code.
+- `create_prototype_demo.py` — generator for the demo prototype notebook.
+  Produces self-contained Colab notebook with 9 steps: connect, load tools,
+  build candidate pool, select case, gather evidence (repeatable), AI coach,
+  record answer, watch AI agent, compare & reflect.
+- `prototypes/colab_preview_v2.html` — styled HTML mockup simulating the
+  Colab student experience with FHIR-grounded toolkit reference, query
+  banners, and agent dashboard.
+- `test_demo_notebook.py` — smoke test harness that extracts code cells,
+  mocks `#@param` values, and runs against the live FHIR server.
+
+### Changed
+
+- Prototype notebook UX redesigned per Phase 0 of the migration plan:
+  - All code cells use `cellView: "form"` + `#@title` (hidden in Colab)
+  - `#@param` annotations replace `input()` calls (Colab form widgets)
+  - `display(Markdown(...))` replaces `print()` for rich output
+  - FHIR queries shown in output after each action (resource type, endpoint, parameters)
+  - Agent Dashboard shows evidence by FHIR resource, missing evidence with query hints
+  - Query log tracks actual FHIR requests, not Python function names
+  - AI agent comparison shows FHIR endpoints called at each step
+  - Discussion questions reference FHIR resource types explicitly
+
 - `student_materials/run_agent_explained.md` — beginner-friendly walkthrough of
   the `run_agent` function from Session 3. Covers each section of the code with
   plain-English explanations: function signature, initialization, the while loop,
