@@ -244,21 +244,26 @@ _state = {
     "question": "Is this patient more consistent with Type 1 diabetes, Type 2 diabetes, or still unclear?",
     "patient_id": None, "patient_label": None,
     "history": [], "evidence": {}, "final_answer": None,
+    "assessment": "No opinion yet",
 }
 
 def _evidence_gaps():
     ev = _state["evidence"]
     gaps = []
     if "demographics" not in ev:
-        gaps.append(("Basic demographics", "Patient"))
+        gaps.append(("Demographics — age at onset", "Patient"))
     if "conditions" not in ev:
-        gaps.append(("Problem list / diagnosis context", "Condition"))
+        gaps.append(("Problem list — existing diagnoses", "Condition"))
     if "c_peptide" not in ev:
-        gaps.append(("C-peptide level (LOINC 1986-9)", "Observation"))
-    if "medications" not in ev:
-        gaps.append(("Medication pattern", "MedicationRequest"))
+        gaps.append(("C-peptide — direct T1/T2 differentiator", "Observation"))
+    if "hba1c" not in ev:
+        gaps.append(("HbA1c — glycemic control", "Observation"))
     if "bmi" not in ev:
-        gaps.append(("BMI / insulin-resistance (LOINC 39156-5)", "Observation"))
+        gaps.append(("BMI — insulin resistance context", "Observation"))
+    if "egfr" not in ev:
+        gaps.append(("eGFR — kidney function / CKD staging", "Observation"))
+    if "treatment_regimen" not in ev:
+        gaps.append(("Treatment regimen — insulin-only vs oral agents", "MedicationRequest"))
     return gaps
 
 def _render_dashboard():
@@ -266,6 +271,8 @@ def _render_dashboard():
     lines.append(f"**Clinical Question:** {_state['question']}")
     if _state["patient_label"]:
         lines.append(f"  \n**Patient:** {_state['patient_label']} · ID: `{_state['patient_id']}`")
+    _current_assessment = _state.get("assessment", "No opinion yet")
+    lines.append(f"  \n**Your current assessment:** {_current_assessment}")
     lines.append("")
 
     ev = _state["evidence"]
@@ -281,9 +288,9 @@ def _render_dashboard():
             elif key == "conditions":
                 names = [r["condition"] for r in value[:5]]
                 lines.append(f"| Problem List | `Condition` | {', '.join(names) if names else 'None found'} |")
-            elif key == "medications":
+            elif key == "treatment_regimen":
                 meds = [r["medication"] for r in value[:5]]
-                lines.append(f"| Medications | `MedicationRequest` | {', '.join(meds) if meds else 'None found'} |")
+                lines.append(f"| Treatment Regimen | `MedicationRequest` | {', '.join(meds) if meds else 'None found'} |")
             elif key == "encounters":
                 if value:
                     e = value[0]
@@ -324,7 +331,10 @@ def _render_dashboard():
 CLAUDE_TOOLS = [
     {
         "name": "get_patient",
-        "description": "FHIR query: GET /Patient/{id}. Returns demographics for one patient.",
+        "description": (
+            "FHIR query: GET /Patient/{id}. Returns demographics (age, gender, DOB). "
+            "Age at onset is clinically relevant: younger onset leans toward Type 1."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {"patient_id": {"type": "string"}},
@@ -335,8 +345,10 @@ CLAUDE_TOOLS = [
         "name": "search_observations",
         "description": (
             "FHIR query: GET /Observation?subject=Patient/{id}&code={loinc}. "
-            "Useful LOINC codes: 4548-4 HbA1c, 1986-9 C-peptide, 39156-5 BMI, "
-            "2160-0 creatinine, 33914-3 eGFR."
+            "Query ONE lab at a time to reason about each result before deciding the next query. "
+            "Key LOINC codes: 1986-9 C-peptide (direct T1/T2 differentiator — low means beta-cell "
+            "destruction), 4548-4 HbA1c (glycemic control, severity not type), 39156-5 BMI "
+            "(insulin resistance context), 33914-3 eGFR (kidney function / CKD staging)."
         ),
         "input_schema": {
             "type": "object",
@@ -350,7 +362,10 @@ CLAUDE_TOOLS = [
     },
     {
         "name": "search_medications",
-        "description": "FHIR query: GET /MedicationRequest?subject=Patient/{id}.",
+        "description": (
+            "FHIR query: GET /MedicationRequest?subject=Patient/{id}. Returns treatment regimen. "
+            "Insulin-only pattern suggests Type 1; oral agents (metformin, sulfonylureas) suggest Type 2."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
@@ -362,7 +377,11 @@ CLAUDE_TOOLS = [
     },
     {
         "name": "search_all_conditions",
-        "description": "FHIR query: GET /Condition?subject=Patient/{id}. Returns full problem list.",
+        "description": (
+            "FHIR query: GET /Condition?subject=Patient/{id}. Returns full problem list with "
+            "SNOMED codes and clinical status. Reveals existing diagnoses, comorbidities, and "
+            "diagnostic context."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
@@ -374,7 +393,10 @@ CLAUDE_TOOLS = [
     },
     {
         "name": "search_encounters",
-        "description": "FHIR query: GET /Encounter?subject=Patient/{id}.",
+        "description": (
+            "FHIR query: GET /Encounter?subject=Patient/{id}. Returns visit history. "
+            "Care pattern context — frequency and type of visits."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
@@ -520,6 +542,7 @@ else:
     _state["history"] = []
     _state["evidence"] = {}
     _state["final_answer"] = None
+    _state["assessment"] = "No opinion yet"
 
     display(Markdown(
         f"## Case {case_number} Selected\n\n"
@@ -533,11 +556,22 @@ else:
 
 GATHER_EVIDENCE = r"""
 #@title Step 5: Gather evidence (change dropdown → click Run → repeat)
-action = "Get demographics" #@param ["Get demographics", "Get full problem list", "Get labs", "Get medications", "Get encounters"]
+action = "Get demographics" #@param ["Get demographics", "Get problem list", "Get C-peptide", "Get HbA1c", "Get BMI", "Get eGFR", "Get treatment regimen", "Get encounters"]
+assessment = "No opinion yet" #@param ["No opinion yet", "Slight lean toward Type 1", "Slight lean toward Type 2", "Strongly leaning Type 1", "Strongly leaning Type 2", "Confident Type 1", "Confident Type 2", "Unclear — conflicting evidence"]
+ready_to_answer = False #@param {type:"boolean"}
 
 if _state["patient_id"] is None:
     display(Markdown("**Select a case first** (Step 4 above)."))
+elif ready_to_answer:
+    _state["assessment"] = assessment
+    display(Markdown(
+        f"## Ready to Answer\n\n"
+        f"**Your current assessment:** {assessment}\n\n"
+        f"**Queries used:** {len(_state['history'])}\n\n"
+        "Scroll down to **Step 7** to record your final classification and rationale."
+    ))
 else:
+    _state["assessment"] = assessment
     _pid = _state["patient_id"]
 
     if action == "Get demographics":
@@ -554,7 +588,7 @@ else:
             f"| Date of Birth | {_result.get('birthDate')} |"
         ))
 
-    elif action == "Get full problem list":
+    elif action == "Get problem list":
         _furl, _result = _search_all_conditions(_pid)
         _show_query(_furl, "Condition")
         _state["evidence"]["conditions"] = _result["results"]
@@ -565,53 +599,68 @@ else:
         else:
             display(Markdown("### Problem List\n\n*No conditions found for this patient.*"))
 
-    elif action == "Get labs":
-        _lab_rows = []
-        _lab_queries = []
-        for _lab_name, (_loinc_code, _lab_desc) in LAB_LOOKUP.items():
-            _furl, _result = _search_observations(_pid, _loinc_code)
-            _lab_queries.append(_furl)
-            _ev_key = _lab_name.lower().replace("-", "_").replace(" ", "_")
-            _latest = _result["results"][0] if _result["results"] else None
-            _state["evidence"][_ev_key] = {"bundle": _result, "latest": _latest}
-            if _latest:
-                _lab_rows.append({
-                    "Lab": _lab_name,
-                    "LOINC": _loinc_code,
-                    "Value": _latest.get("value", "N/A"),
-                    "Unit": _latest.get("unit", ""),
-                    "Date": _latest.get("date", "N/A"),
-                    "Description": _lab_desc.split(" — ")[1] if " — " in _lab_desc else _lab_desc,
-                })
-            else:
-                _lab_rows.append({
-                    "Lab": _lab_name,
-                    "LOINC": _loinc_code,
-                    "Value": "—",
-                    "Unit": "",
-                    "Date": "—",
-                    "Description": "No results found",
-                })
-        for _furl in _lab_queries:
-            _show_query(_furl, "Observation")
-        _found = [r for r in _lab_rows if r["Value"] != "—"]
-        _note = ", ".join(f"{r['Lab']}: {r['Value']} {r['Unit']}" for r in _found[:3])
-        if len(_found) > 3:
-            _note += f" (+{len(_found)-3} more)"
-        _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": f"{len(_lab_queries)} Observation queries", "note": _note or "No lab results"})
-        _rows_md = "\n".join(f"| {r['Lab']} | {r['LOINC']} | {r['Value']} | {r['Unit']} | {r['Date']} | {r['Description']} |" for r in _lab_rows)
-        display(Markdown(f"### Lab Results (All Available)\n\n| Lab | LOINC | Value | Unit | Date | Description |\n|-----|-------|-------|------|------|-------------|\n{_rows_md}"))
+    elif action == "Get C-peptide":
+        _furl, _result = _search_observations(_pid, "1986-9")
+        _show_query(_furl, "Observation")
+        _latest = _result["results"][0] if _result["results"] else None
+        _state["evidence"]["c_peptide"] = {"bundle": _result, "latest": _latest}
+        if _latest:
+            _note = f"{_latest.get('value', 'N/A')} {_latest.get('unit', '')}"
+            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"C-peptide: {_note}"})
+            display(Markdown(f"### C-peptide\n\nDirect T1/T2 differentiator — low values indicate beta-cell destruction (Type 1).\n\n| Value | Unit | Date |\n|-------|------|------|\n| {_latest.get('value', 'N/A')} | {_latest.get('unit', '')} | {_latest.get('date', 'N/A')} |\n\n*Normal range: 1.1–4.4 ng/mL*"))
+        else:
+            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": "C-peptide: no results"})
+            display(Markdown("### C-peptide\n\n*No C-peptide results found for this patient.*"))
 
-    elif action == "Get medications":
+    elif action == "Get HbA1c":
+        _furl, _result = _search_observations(_pid, "4548-4")
+        _show_query(_furl, "Observation")
+        _latest = _result["results"][0] if _result["results"] else None
+        _state["evidence"]["hba1c"] = {"bundle": _result, "latest": _latest}
+        if _latest:
+            _note = f"{_latest.get('value', 'N/A')} {_latest.get('unit', '')}"
+            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"HbA1c: {_note}"})
+            display(Markdown(f"### HbA1c\n\nGlycemic control over ~3 months — indicates severity, not type.\n\n| Value | Unit | Date |\n|-------|------|------|\n| {_latest.get('value', 'N/A')} | {_latest.get('unit', '')} | {_latest.get('date', 'N/A')} |\n\n*Target: < 7.0% · Poor control: > 7.5%*"))
+        else:
+            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": "HbA1c: no results"})
+            display(Markdown("### HbA1c\n\n*No HbA1c results found for this patient.*"))
+
+    elif action == "Get BMI":
+        _furl, _result = _search_observations(_pid, "39156-5")
+        _show_query(_furl, "Observation")
+        _latest = _result["results"][0] if _result["results"] else None
+        _state["evidence"]["bmi"] = {"bundle": _result, "latest": _latest}
+        if _latest:
+            _note = f"{_latest.get('value', 'N/A')} {_latest.get('unit', '')}"
+            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"BMI: {_note}"})
+            display(Markdown(f"### BMI\n\nInsulin resistance context — higher BMI leans toward T2, but not definitive.\n\n| Value | Unit | Date |\n|-------|------|------|\n| {_latest.get('value', 'N/A')} | {_latest.get('unit', '')} | {_latest.get('date', 'N/A')} |\n\n*Overweight: 25–30 · Obese: > 30*"))
+        else:
+            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": "BMI: no results"})
+            display(Markdown("### BMI\n\n*No BMI results found for this patient.*"))
+
+    elif action == "Get eGFR":
+        _furl, _result = _search_observations(_pid, "33914-3")
+        _show_query(_furl, "Observation")
+        _latest = _result["results"][0] if _result["results"] else None
+        _state["evidence"]["egfr"] = {"bundle": _result, "latest": _latest}
+        if _latest:
+            _note = f"{_latest.get('value', 'N/A')} {_latest.get('unit', '')}"
+            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"eGFR: {_note}"})
+            display(Markdown(f"### eGFR\n\nKidney function / CKD staging — complications context.\n\n| Value | Unit | Date |\n|-------|------|------|\n| {_latest.get('value', 'N/A')} | {_latest.get('unit', '')} | {_latest.get('date', 'N/A')} |\n\n*Normal: > 90 · CKD Stage 3: 30–59 · CKD Stage 4: 15–29*"))
+        else:
+            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": "eGFR: no results"})
+            display(Markdown("### eGFR\n\n*No eGFR results found for this patient.*"))
+
+    elif action == "Get treatment regimen":
         _furl, _result = _search_medications(_pid)
         _show_query(_furl, "MedicationRequest")
-        _state["evidence"]["medications"] = _result["results"]
+        _state["evidence"]["treatment_regimen"] = _result["results"]
         _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"{len(_result['results'])} medications"})
         if _result["results"]:
             _rows_md = "\n".join(f"| {r['medication']} | {r['status']} | {r.get('authoredOn', 'N/A')} |" for r in _result["results"][:10])
-            display(Markdown(f"### Medications\n\n| Medication | Status | Date |\n|------------|--------|------|\n{_rows_md}"))
+            display(Markdown(f"### Treatment Regimen\n\nInsulin-only suggests T1; oral agents (metformin, sulfonylureas) suggest T2.\n\n| Medication | Status | Date |\n|------------|--------|------|\n{_rows_md}"))
         else:
-            display(Markdown("### Medications\n\n*No medications found.*"))
+            display(Markdown("### Treatment Regimen\n\n*No medications found.*"))
 
     elif action == "Get encounters":
         _furl, _result = _search_encounters(_pid)
@@ -656,8 +705,9 @@ else:
                 "You are coaching a clinical informatics student who is acting as "
                 "an agent reviewing a diabetes case using FHIR queries. "
                 "Given the current state, recommend exactly one next FHIR query "
-                "from: Get demographics (Patient), Get full problem list (Condition), "
-                "Get labs [specify which] (Observation), Get medications (MedicationRequest), "
+                "from: Get demographics (Patient), Get problem list (Condition), "
+                "Get C-peptide (Observation), Get HbA1c (Observation), Get BMI (Observation), "
+                "Get eGFR (Observation), Get treatment regimen (MedicationRequest), "
                 "Get encounters (Encounter), or Finish and answer. "
                 "Name the FHIR resource and explain why in 2-3 sentences.\n\n"
                 + json.dumps(_coach_state, indent=2)
@@ -703,12 +753,20 @@ else:
 LLM_AGENT = r"""
 #@title Step 8: Watch the AI agent work the same case
 
+_CONFIDENCE_SCALE = [
+    "No opinion yet",
+    "Slight lean toward Type 1", "Slight lean toward Type 2",
+    "Strongly leaning Type 1", "Strongly leaning Type 2",
+    "Confident Type 1", "Confident Type 2",
+    "Unclear — conflicting evidence",
+]
+
 def _tool_to_human_label(fn_name, fn_args):
     # Map tool names to plain-English action descriptions.
     labels = {
         "get_patient": "Get demographics",
         "search_all_conditions": "Get problem list",
-        "search_medications": "Get medications",
+        "search_medications": "Get treatment regimen",
         "search_encounters": "Get encounters",
     }
     if fn_name == "search_observations":
@@ -723,6 +781,25 @@ def _tool_to_human_label(fn_name, fn_args):
         }
         return loinc_labels.get(loinc, f"Get lab ({loinc})")
     return labels.get(fn_name, fn_name)
+
+def _tool_clinical_context(fn_name, fn_args):
+    # Brief clinical reason for choosing this tool.
+    contexts = {
+        "get_patient": "age at onset context",
+        "search_all_conditions": "existing diagnoses and comorbidities",
+        "search_medications": "insulin-only vs oral agent pattern",
+        "search_encounters": "care pattern context",
+    }
+    if fn_name == "search_observations":
+        loinc = fn_args.get("loinc_code", "")
+        obs_contexts = {
+            "4548-4": "glycemic control (severity, not type)",
+            "1986-9": "direct T1/T2 differentiator",
+            "39156-5": "insulin resistance context",
+            "33914-3": "kidney function / CKD staging",
+        }
+        return obs_contexts.get(loinc, "lab value")
+    return contexts.get(fn_name, "")
 
 def _summarize_result(fn_name, fn_args, result):
     # Create a brief human-readable summary of what came back.
@@ -774,14 +851,26 @@ else:
     )
     _agent_system = (
         "You are a clinical data assistant querying a FHIR server with synthetic "
-        "patient data. Prefer direct evidence over heuristics. Use C-peptide when "
-        "available. If evidence is conflicting, say unclear. Be concise."
+        "patient data. You work as an agent: query one tool at a time, reason about "
+        "the result, then decide your next step.\n\n"
+        "After EACH tool result, you MUST include a reasoning block with:\n"
+        "1. What the result means clinically\n"
+        "2. Your current assessment on this scale: No opinion yet / Slight lean toward "
+        "Type 1 / Slight lean toward Type 2 / Strongly leaning Type 1 / Strongly "
+        "leaning Type 2 / Confident Type 1 / Confident Type 2 / Unclear — conflicting "
+        "evidence\n"
+        "3. What you want to query next and why (or that you're ready to answer)\n\n"
+        "STOP querying when you reach 'Confident' level — do not run every tool. "
+        "The goal is efficient clinical reasoning, not exhaustive data collection.\n\n"
+        "Prefer direct evidence (C-peptide) over indirect (BMI). If evidence is "
+        "conflicting, say unclear. Be concise but show your reasoning."
     )
 
     display(Markdown("## AI Agent Run\n\n*The AI agent is querying the same patient using the same FHIR tools...*\n"))
 
     _agent_messages = [{"role": "user", "content": _agent_question}]
     _agent_tool_log = []
+    _agent_confidence_trajectory = ["No opinion yet"]
     _final_text = "(Agent reached maximum steps)"
 
     for _step in range(1, 9):
@@ -790,10 +879,21 @@ else:
             messages=_agent_messages, tools=CLAUDE_TOOLS,
         )
         _tblocks = [b for b in _resp.content if b.type == "tool_use"]
+        _text_blocks = [b.text for b in _resp.content if b.type == "text" and b.text.strip()]
 
         if not _tblocks:
             _final_text = "".join(b.text for b in _resp.content if hasattr(b, "text"))
             break
+
+        # Display agent reasoning (text blocks before tool calls)
+        for _reasoning in _text_blocks:
+            display(Markdown(f"> {_reasoning.replace(chr(10), chr(10) + '> ')}"))
+            # Try to extract confidence level from reasoning
+            for _conf in reversed(_CONFIDENCE_SCALE):
+                if _conf.lower() in _reasoning.lower():
+                    if _agent_confidence_trajectory[-1] != _conf:
+                        _agent_confidence_trajectory.append(_conf)
+                    break
 
         _acontent = []
         for _b in _resp.content:
@@ -806,18 +906,21 @@ else:
         _tool_results = []
         for _tb in _tblocks:
             _human_label = _tool_to_human_label(_tb.name, _tb.input)
+            _clinical_ctx = _tool_clinical_context(_tb.name, _tb.input)
             _fhir_display = _tool_to_fhir_display(_tb.name, _tb.input)
             _tr = _tool_runner(_tb.name, _tb.input)
             _result_summary = _summarize_result(_tb.name, _tb.input, _tr)
+            _reasoning_text = " · ".join(_text_blocks) if _text_blocks else ""
             _agent_tool_log.append({
                 "Step": _step,
                 "Action": _human_label,
                 "FHIR Query": _fhir_display,
                 "Result": _result_summary,
+                "Reasoning": _reasoning_text[:120] + ("..." if len(_reasoning_text) > 120 else ""),
             })
             display(Markdown(
                 f"**Step {_step}: {_human_label}** — "
-                f"retrieving {_human_label.lower().replace('get ', '')}\n"
+                f"{_clinical_ctx}\n"
                 f"  \nFHIR: `{_fhir_display}` → {_result_summary}"
             ))
             _tool_results.append({
@@ -826,8 +929,16 @@ else:
             })
         _agent_messages.append({"role": "user", "content": _tool_results})
 
+    # Store trajectory for debrief comparison
+    _state["_agent_confidence_trajectory"] = _agent_confidence_trajectory
+    _state["_agent_tool_log"] = _agent_tool_log
+    _state["_agent_steps"] = len(_agent_tool_log)
+
     display(Markdown("---"))
     display(Markdown(f"### AI Agent's Answer\n\n{_final_text}"))
+    if _agent_confidence_trajectory and len(_agent_confidence_trajectory) > 1:
+        _traj_str = " → ".join(_agent_confidence_trajectory)
+        display(Markdown(f"**Agent confidence trajectory:** {_traj_str}"))
     if _agent_tool_log:
         display(Markdown("### AI Agent's FHIR Query Log"))
         display(HTML(pd.DataFrame(_agent_tool_log).to_html(index=False)))
@@ -844,22 +955,45 @@ if _state["final_answer"]:
         f"### Your Answer\n\n"
         f"**Classification:** {_state['final_answer']['classification']}\n\n"
         f"**Rationale:** {_state['final_answer']['rationale']}\n\n"
-        f"**FHIR queries used:** {len(_state['history']) - 1}"
+        f"**FHIR queries used:** {len(_state['history']) - 1}\n\n"
+        f"**Final assessment:** {_state.get('assessment', 'Not recorded')}"
+    ))
+
+# Confidence trajectory comparison
+_student_assessment = _state.get("assessment", "No opinion yet")
+_agent_trajectory = _state.get("_agent_confidence_trajectory", [])
+_agent_steps = _state.get("_agent_steps", 0)
+_student_steps = len([h for h in _state.get("history", []) if h.get("fhir_query") != "—"])
+
+if _agent_trajectory and len(_agent_trajectory) > 1:
+    display(Markdown(
+        "### Confidence Trajectories\n\n"
+        "| | You | AI Agent |\n"
+        "|---|-----|----------|\n"
+        f"| Final assessment | {_student_assessment} | {_agent_trajectory[-1]} |\n"
+        f"| Queries used | {_student_steps} | {_agent_steps} |\n"
+        f"| Confidence path | *(tracked via dropdown)* | {' → '.join(_agent_trajectory)} |\n"
+        "\n"
+        "**Discussion:** Did the agent reach confidence faster or slower than you? "
+        "What evidence was decisive for each of you? Could either of you have "
+        "stopped earlier without losing accuracy?"
     ))
 
 display(Markdown(
     "### Discussion Questions\n\n"
     "1. **Query strategy:** Did you and the AI query the same FHIR resources? "
     "In what order? Which query was most informative?\n"
-    "2. **Stopping point:** Did you query more or fewer resources? "
-    "Could either of you have stopped earlier?\n"
-    "3. **FHIR resource value:** Which resource type (`Patient`, `Condition`, "
+    "2. **Stopping point:** The agent stops when it reaches 'Confident' level. "
+    "Did you query more or fewer resources? What made you feel you had enough evidence?\n"
+    "3. **Clinical reasoning:** Look at the agent's reasoning after each step. "
+    "Did it weigh the evidence the same way you did? Where did it differ?\n"
+    "4. **FHIR resource value:** Which resource type (`Patient`, `Condition`, "
     "`Observation`, `MedicationRequest`, `Encounter`) mattered most for this "
     "question? Would that change for a different clinical question?\n"
-    "4. **Uncertainty:** Did either you or the AI express appropriate uncertainty? "
+    "5. **Uncertainty:** Did either you or the AI express appropriate uncertainty? "
     "What FHIR data (if it existed) would resolve the ambiguity?\n"
-    "5. **The agent loop:** Describe it: *observe evidence → choose FHIR query → "
-    "execute → update assessment → repeat or answer.* What makes this hard?"
+    "6. **The agent loop:** *observe evidence → choose FHIR query → execute → "
+    "update assessment → repeat or answer.* What makes the 'when to stop' decision hard?"
 ))
 
 if _state["history"]:
@@ -925,10 +1059,12 @@ cells = [
         "- **Unclear** — evidence is insufficient or conflicting\n",
         "\n",
         "**Key evidence to look for:**\n",
-        "- C-peptide level (low → T1, normal/high → T2) — `Observation` with LOINC `1986-9`\n",
-        "- Medication pattern (insulin-only vs. oral agents) — `MedicationRequest`\n",
-        "- BMI (lower → T1, higher → T2, not definitive) — `Observation` with LOINC `39156-5`\n",
-        "- Diagnosis context — `Condition` resource\n",
+        "- **C-peptide** (low → T1, normal/high → T2) — the most direct differentiator (`Observation` LOINC `1986-9`)\n",
+        "- **Treatment regimen** (insulin-only vs. oral agents) — strong T1/T2 signal (`MedicationRequest`)\n",
+        "- **BMI** (lower → T1, higher → T2, not definitive) — context, not proof (`Observation` LOINC `39156-5`)\n",
+        "- **HbA1c** (glycemic control) — tells you severity, not type (`Observation` LOINC `4548-4`)\n",
+        "- **eGFR** (kidney function) — complications and CKD staging (`Observation` LOINC `33914-3`)\n",
+        "- **Diagnosis context** — existing conditions and comorbidities (`Condition`)\n",
     ]),
 
     md_cell([
@@ -960,18 +1096,22 @@ cells = [
     md_cell([
         "## Your Toolkit: FHIR Queries as Agent Tools\n",
         "\n",
-        "Each tool is a **FHIR query** — a structured request to a specific resource endpoint.\n",
+        "Each tool is a **FHIR query** — a structured request to a specific resource endpoint. ",
+        "Choosing WHICH tool to use next is a clinical reasoning decision.\n",
         "\n",
-        "| Tool | FHIR Query | Returns | When to Use |\n",
-        "|------|------------|---------|-------------|\n",
-        "| Get demographics | `GET /Patient/{id}` | Name, age, gender, DOB | Basic patient context |\n",
-        "| Get problem list | `GET /Condition?subject=Patient/{id}` | Diagnoses + clinical status | Full diagnostic picture |\n",
-        "| Get labs | `GET /Observation?subject=Patient/{id}&code={LOINC}` | Lab values sorted by date | C-peptide, HbA1c, BMI |\n",
-        "| Get medications | `GET /MedicationRequest?subject=Patient/{id}` | Med names, status, dates | Insulin-only vs oral agents |\n",
-        "| Get encounters | `GET /Encounter?subject=Patient/{id}` | Visit type, class, dates | Care context |\n",
+        "| Tool | FHIR Query | Clinical Reasoning |\n",
+        "|------|------------|--------------------|\n",
+        "| Get demographics | `GET /Patient/{id}` | Age at onset — younger leans toward T1 |\n",
+        "| Get problem list | `GET /Condition?subject=...` | Existing diagnoses, comorbidities |\n",
+        "| Get C-peptide | `GET /Observation?code=1986-9` | **Direct T1/T2 differentiator** — low = beta-cell destruction |\n",
+        "| Get HbA1c | `GET /Observation?code=4548-4` | Glycemic control (severity, not type) |\n",
+        "| Get BMI | `GET /Observation?code=39156-5` | Insulin resistance context |\n",
+        "| Get eGFR | `GET /Observation?code=33914-3` | Kidney function / CKD staging |\n",
+        "| Get treatment regimen | `GET /MedicationRequest?subject=...` | Insulin-only vs oral agents |\n",
+        "| Get encounters | `GET /Encounter?subject=...` | Care pattern context |\n",
         "\n",
         "**Coding systems:** SNOMED CT for diagnoses (46635009 = T1DM, 44054006 = T2DM) · ",
-        "LOINC for labs (4548-4 = HbA1c, 1986-9 = C-peptide, 39156-5 = BMI)\n",
+        "LOINC for labs (4548-4 = HbA1c, 1986-9 = C-peptide, 39156-5 = BMI, 33914-3 = eGFR)\n",
         "\n",
         "> The AI agent has **exactly these same tools**. The difference isn't the tools — ",
         "it's the *strategy* for choosing which to use and when to stop.\n",
@@ -1009,13 +1149,15 @@ cells = [
         "\n",
         "1. **Select a case** — pick a patient number below\n",
         "2. **Gather evidence** — choose a FHIR query from the dropdown, click Run, review the results\n",
-        "3. **Watch your dashboard** — it tracks evidence collected, gaps, and your query log\n",
-        "4. **Ask the AI coach** — it suggests one next FHIR query\n",
-        "5. **Record your answer** — classify the patient, citing specific FHIR findings\n",
-        "6. **Compare with the AI agent** — watch it query the same patient\n",
+        "3. **Track your confidence** — after each query, update the assessment dropdown\n",
+        "4. **Decide when to stop** — check \"Ready to answer\" when you have enough evidence\n",
+        "5. **Ask the AI coach** — it suggests one next FHIR query (optional)\n",
+        "6. **Record your answer** — classify the patient, citing specific FHIR findings\n",
+        "7. **Compare with the AI agent** — watch it query the same patient and track its confidence\n",
         "\n",
         "> **Think before you query.** An agent that runs every available tool wastes time. ",
-        "Pick the query most likely to change your assessment.\n",
+        "Pick the query most likely to change your assessment. The goal is reaching ",
+        "confidence efficiently, not exhausting every option.\n",
     ]),
 
     form_cell(SELECT_CASE),
@@ -1024,12 +1166,16 @@ cells = [
         "## Gather Evidence\n",
         "\n",
         "Each time you run the cell below, you execute **one FHIR query** — one agent turn. ",
-        "Change the dropdown to select which query to run, then click Run.\n",
+        "Change the **action dropdown** to select which query to run, then click Run.\n",
         "\n",
         "After each query you'll see:\n",
         "- The **FHIR request** that was made\n",
-        "- The **results** as a table\n",
+        "- The **results** with clinical context\n",
         "- Your **Agent Dashboard** showing collected evidence, gaps, and query log\n",
+        "\n",
+        "**Confidence tracking:** After each query, update the **assessment dropdown** to ",
+        "reflect your current thinking. When you feel you have enough evidence, check ",
+        "**\"Ready to answer\"** to proceed to Step 7.\n",
         "\n",
         "> **Run this cell as many times as you want.** Each run is one turn.\n",
     ]),
@@ -1059,7 +1205,9 @@ cells = [
         "## Watch the AI Agent\n",
         "\n",
         "The AI agent receives the same clinical question and the same FHIR tools. ",
-        "Watch which queries it chooses, in what order, and how its reasoning compares to yours.\n",
+        "Watch which queries it chooses, in what order, and **when it decides to stop**. ",
+        "After each query, the agent states its reasoning and confidence level — ",
+        "it stops when it reaches \"Confident\" rather than running every tool.\n",
     ]),
 
     form_cell(LLM_AGENT),

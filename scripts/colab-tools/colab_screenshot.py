@@ -161,27 +161,97 @@ def expand_all_sections(page):
     time.sleep(1)
 
 
-def wait_for_runtime(page, timeout_s=60):
-    """Wait for Colab to connect to a runtime, clicking Connect if needed."""
-    print("  Waiting for runtime connection...", file=sys.stderr)
-
-    connected = page.query_selector(
-        "div[class*='connected'], "
-        "span:has-text('Python 3'), "
-        "colab-connect-button[connected]"
-    )
-    if connected:
-        print("  Runtime already connected", file=sys.stderr)
+def _click_connect_button(page):
+    """Click the Connect/Reconnect button, piercing shadow DOM if needed."""
+    # Try via JS piercing shadow DOM — most reliable approach.
+    # Colab's connect button text varies: "Connect", "Reconnect",
+    # "Connect to a new runtime", or just the colab-connect-button element.
+    clicked = page.evaluate("""() => {
+        function findConnect(root) {
+            const buttons = root.querySelectorAll(
+                'button, colab-connect-button, [role="button"]'
+            );
+            for (const btn of buttons) {
+                const text = (btn.textContent || '').trim().toLowerCase();
+                if (text.includes('connect') && !text.includes('disconnect')) {
+                    btn.click();
+                    return true;
+                }
+            }
+            for (const el of root.querySelectorAll('*')) {
+                if (el.shadowRoot) {
+                    const found = findConnect(el.shadowRoot);
+                    if (found) return true;
+                }
+            }
+            return false;
+        }
+        return findConnect(document);
+    }""")
+    if clicked:
         return True
-
+    # Fallback: try standard selectors
     connect_btn = page.query_selector(
         "button:has-text('Connect'), "
+        "button:has-text('Reconnect'), "
         "colab-connect-button, "
         "#connect"
     )
     if connect_btn:
         connect_btn.click()
+        return True
+    return False
+
+
+def _check_runtime_connected(page):
+    """Check if Colab runtime is connected, including RAM/Disk indicator.
+
+    Only returns True on definitive positive signals (RAM/Disk usage bars).
+    """
+    return page.evaluate("""() => {
+        // Helper to get all text including shadow DOM
+        function getAllText(root) {
+            let text = '';
+            if (root.textContent) text += root.textContent;
+            for (const el of (root.querySelectorAll ? root.querySelectorAll('*') : [])) {
+                if (el.shadowRoot) text += getAllText(el.shadowRoot);
+            }
+            return text;
+        }
+        // Check the connect button area specifically for RAM/Disk usage bars
+        // This is the definitive sign of a connected runtime
+        const btn = document.querySelector('colab-connect-button');
+        if (btn) {
+            const btnText = getAllText(btn).toLowerCase();
+            if (btnText.includes('ram') && btnText.includes('disk')) return true;
+        }
+        // Also check for the resource usage indicator that appears when connected
+        const resourceEl = document.querySelector(
+            'colab-usage-bar, div[class*="resource"], div[class*="usage"]'
+        );
+        if (resourceEl) {
+            const text = getAllText(resourceEl).toLowerCase();
+            if (text.includes('ram') || text.includes('disk')) return true;
+        }
+        return false;
+    }""")
+
+
+def wait_for_runtime(page, timeout_s=90):
+    """Wait for Colab to connect to a runtime, clicking Connect if needed."""
+    print("  Waiting for runtime connection...", file=sys.stderr)
+
+    if _check_runtime_connected(page):
+        print("  Runtime already connected", file=sys.stderr)
+        return True
+
+    if _click_connect_button(page):
         print("  Clicked Connect button", file=sys.stderr)
+    else:
+        print("  WARNING: Could not find Connect button", file=sys.stderr)
+
+    # Give Colab a moment to start the connection process
+    time.sleep(5)
 
     start = time.time()
     _sessions_handled = False
@@ -196,25 +266,25 @@ def wait_for_runtime(page, timeout_s=60):
                 else:
                     break
             page.keyboard.press("Escape")
-            time.sleep(2)
+            time.sleep(3)
             _sessions_handled = True
+            # Reset timer — give full timeout after session cleanup
+            start = time.time()
             # Retry Connect after terminating sessions
-            connect_btn = page.query_selector(
-                "button:has-text('Connect'), "
-                "colab-connect-button, "
-                "#connect"
-            )
-            if connect_btn:
-                connect_btn.click()
+            if _click_connect_button(page):
                 print("  Retrying Connect after terminating sessions", file=sys.stderr)
+            else:
+                # If no connect button found, page may need reload
+                print("  No Connect button found, reloading page...", file=sys.stderr)
+                page.reload(wait_until="domcontentloaded", timeout=30000)
+                wait_for_colab_load(page)
+                _click_connect_button(page)
+                print("  Clicked Connect after reload", file=sys.stderr)
             continue
 
-        ready = page.query_selector(
-            "span:has-text('Python 3'), "
-            "div[class*='connected']:not([class*='disconnected'])"
-        )
-        if ready:
-            print(f"  Runtime connected ({time.time() - start:.0f}s)", file=sys.stderr)
+        if _check_runtime_connected(page):
+            elapsed = time.time() - start
+            print(f"  Runtime connected ({elapsed:.0f}s)", file=sys.stderr)
             return True
         time.sleep(2)
 
@@ -250,6 +320,34 @@ def run_all_cells(page, timeout_s=300, grant_secrets=True):
         _handled = handle_colab_dialogs(page, grant_secrets=grant_secrets)
         for _h in _handled:
             print(f"  Handled dialog: {_h}", file=sys.stderr)
+        if "too many sessions" in _handled:
+            # Sessions dialog blocked execution — need to reconnect and re-run
+            print("  Reconnecting runtime after session cleanup...", file=sys.stderr)
+            time.sleep(3)
+            _click_connect_button(page)
+            # Wait for runtime to connect before re-triggering
+            for _wait in range(30):
+                if _check_runtime_connected(page):
+                    break
+                time.sleep(2)
+            time.sleep(2)
+            print(f"  Re-triggering Run All ({RUN_ALL_KEY})...", file=sys.stderr)
+            page.keyboard.press(RUN_ALL_KEY)
+            time.sleep(3)
+            # Handle "Run anyway" confirmation
+            try:
+                run_anyway = page.wait_for_selector(
+                    "button:has-text('Run anyway'), mwc-button:has-text('Run anyway')",
+                    timeout=5000,
+                )
+                if run_anyway:
+                    run_anyway.click()
+                    print("  Clicked 'Run anyway' confirmation", file=sys.stderr)
+            except PlaywrightTimeout:
+                pass
+            saw_running = False
+            start = time.time()  # Reset timer
+            continue
 
         running = page.query_selector_all(
             "div.cell-execution-indicator[class*='running'], "
