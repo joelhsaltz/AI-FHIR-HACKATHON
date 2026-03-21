@@ -47,6 +47,11 @@ fhir-hackathon/
 ├── scripts/colab-tools/                 # Supporting scripts for notebook tools
 │   ├── auth_setup.py                    # One-time Google auth → storageState
 │   ├── colab_screenshot.py              # Playwright Colab screenshotter
+│   ├── colab_common.py                  # Shared Playwright utilities (auth, dialogs, scroll)
+│   ├── colab_interact.py               # Individual cell interaction (run, dropdown, screenshot)
+│   ├── student_review.py               # Screenshot-based student perspective review
+│   ├── student_walkthrough.py          # Autonomous student walkthrough agent
+│   ├── fix_loop.py                     # Autonomous fix loop orchestrator
 │   ├── nb_validate.py                   # Structure + syntax validation
 │   ├── nb_exec_harness.py              # Generic exec() harness
 │   └── requirements.txt
@@ -95,6 +100,13 @@ python scripts/colab-tools/colab_screenshot.py <file_id> --no-run --sections  # 
 python scripts/colab-tools/nb_validate.py <path.ipynb>                # Structure + syntax validation
 python scripts/colab-tools/nb_exec_harness.py <path.ipynb> --skip-pattern "LLM|agent"  # Local exec test
 
+# Student perspective review + autonomous quality pipeline
+python scripts/colab-tools/student_review.py --screenshots ./colab_screenshots --notebook path.ipynb  # Pedagogy review
+python scripts/colab-tools/colab_interact.py <file_id> --list-cells   # List cells with dropdowns
+python scripts/colab-tools/colab_interact.py <file_id> --playbook interactions.json  # Scripted interactions
+python scripts/colab-tools/student_walkthrough.py <file_id> --notebook path.ipynb --review  # Full walkthrough + review
+python scripts/colab-tools/fix_loop.py --generator create_prototype_demo.py --notebook proto.ipynb --file-id <id>  # Autonomous fix loop
+
 # Old screenshot tool (SUPERSEDED — use scripts/colab-tools/ instead)
 # python screenshot_colab.py <file_id>
 ```
@@ -115,7 +127,12 @@ python scripts/colab-tools/nb_exec_harness.py <path.ipynb> --skip-pattern "LLM|a
 | `create_session2_you_are_the_agent_prototype.py` | Generator for original prototype |
 | `screenshot_colab.py` | Old Colab screenshot tool (SUPERSEDED by `scripts/colab-tools/colab_screenshot.py`) |
 | `scripts/colab-tools/auth_setup.py` | Google auth for Colab tools (persistent context + anti-detection args) |
+| `scripts/colab-tools/colab_common.py` | Shared Playwright utilities (auth, dialogs, scroll, DOM traversal) |
 | `scripts/colab-tools/colab_screenshot.py` | Colab screenshotter — scrolls `colab-scroller` element, 5-position capture |
+| `scripts/colab-tools/colab_interact.py` | Individual cell interaction — run cell, set dropdown, cell screenshot |
+| `scripts/colab-tools/student_review.py` | Screenshot-based student perspective review via Claude API |
+| `scripts/colab-tools/student_walkthrough.py` | Autonomous student walkthrough — plays through notebook as student |
+| `scripts/colab-tools/fix_loop.py` | Autonomous fix loop — generate → verify → review → fix → iterate |
 | `create_main_teaching_notebook.py` | Generator for the main teaching notebook |
 | `docs/TEACHING_APPLICATION_PLAN.md` | Full pedagogy and session design |
 | `docs/REDESIGN_SPIKE.md` | Architecture and technical decisions |
@@ -288,7 +305,7 @@ Follow the governance rules in `~/.claude/CLAUDE.md`:
 A local Claude Code skill at `.claude/skills/colab-notebook-tools/` covers the
 full notebook lifecycle: create, edit, validate, execute in Colab, visually verify.
 
-**Skills available:** `/nb-auth`, `/nb-validate`, `/nb-verify`
+**Skills available:** `/nb-auth`, `/nb-validate`, `/nb-verify`, `/nb-review`, `/nb-ship`
 **Scripts:** `scripts/colab-tools/` (auth_setup.py, colab_screenshot.py, nb_validate.py, nb_exec_harness.py)
 **Config at `~/.colab-notebook-tools/`:**
 - `auth.json` — Playwright storageState (Google session cookies)

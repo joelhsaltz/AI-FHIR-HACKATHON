@@ -1,22 +1,29 @@
 ---
 name: colab-notebook-tools
-description: "Use when working with Jupyter notebooks destined for Google Colab: creating, editing, validating, uploading, executing in Colab, or taking screenshots. Triggers on: notebook creation/editing requests, 'verify in Colab', 'screenshot notebook', 'upload to Drive', 'run in Colab', nbformat/ipynb work, or any mention of Colab notebooks. Also triggers on /nb-auth, /nb-validate, /nb-verify, /nb-create, /nb-edit, /nb-lifecycle."
+description: "Use when working with Jupyter notebooks destined for Google Colab: creating, editing, validating, uploading, executing in Colab, or taking screenshots. Triggers on: notebook creation/editing requests, 'verify in Colab', 'screenshot notebook', 'upload to Drive', 'run in Colab', nbformat/ipynb work, or any mention of Colab notebooks. Also triggers on /nb-auth, /nb-validate, /nb-verify, /nb-review, /nb-ship, /nb-create, /nb-edit, /nb-lifecycle."
 ---
 
 # Colab Notebook Tools
 
-Tools and workflows for the full Jupyter notebook lifecycle: create, edit, validate locally, upload to Drive, execute in Colab, and visually verify via screenshots.
+Tools and workflows for the full Jupyter notebook lifecycle: create, edit,
+validate locally, upload to Drive, execute in Colab, visually verify, review
+from a student's perspective, and autonomously iterate on quality.
 
 ## Architecture
 
 ```
-Layer 4: VISUAL VERIFICATION    Playwright + storageState → Colab screenshots
-Layer 3: COLAB EXECUTION        Run All via Playwright, wait for completion
-Layer 2: LOCAL VALIDATION        nbformat + ast.parse + exec() harness
-Layer 1: NOTEBOOK AUTHORING      nbformat programmatic creation/editing
+Layer 6: AUTONOMOUS ITERATION   fix_loop.py → generate → upload → walkthrough → review → fix
+Layer 5: STUDENT REVIEW         student_review.py → Claude API pedagogy evaluation
+Layer 4: INTERACTIVE WALKTHROUGH student_walkthrough.py → play through as student
+Layer 3: VISUAL VERIFICATION    colab_screenshot.py → Run All + sectioned screenshots
+Layer 2: CELL INTERACTION       colab_interact.py → individual cell run/dropdown/screenshot
+Layer 1: LOCAL VALIDATION       nb_validate.py + nb_exec_harness.py
+Layer 0: NOTEBOOK AUTHORING     nbformat programmatic creation/editing
 ```
 
-Each layer works independently. If Playwright isn't installed, Layers 1-2 still work.
+Shared Playwright utilities live in `colab_common.py`. Each layer works
+independently — if Playwright isn't installed, Layer 0-1 still work. If the
+Anthropic API key isn't set, Layers 0-3 still work.
 
 ## Scripts Location
 
@@ -25,7 +32,12 @@ All scripts live in `scripts/colab-tools/` relative to the project root:
 | Script | Purpose |
 |--------|---------|
 | `auth_setup.py` | One-time Google auth → saves storageState |
-| `colab_screenshot.py` | Playwright-based Colab screenshotter |
+| `colab_common.py` | Shared Playwright utilities (auth, dialogs, scroll, DOM) |
+| `colab_screenshot.py` | Run All + sectioned screenshots |
+| `colab_interact.py` | Individual cell interaction (run, dropdown, screenshot) |
+| `student_review.py` | Screenshot-based student perspective review via Claude API |
+| `student_walkthrough.py` | Autonomous student walkthrough agent |
+| `fix_loop.py` | Autonomous fix loop orchestrator |
 | `nb_validate.py` | Structure + syntax validation |
 | `nb_exec_harness.py` | Generic exec() harness with mock input() |
 
@@ -46,7 +58,7 @@ Google trusts for sign-in. Two anti-detection flags are critical:
 - `ignore_default_args=["--enable-automation"]` — suppresses automation banner
 
 After sign-in, the script exports cookies via `context.storage_state()` to `auth.json`
-for use by `colab_screenshot.py` (which uses a regular ephemeral context with the saved state).
+for use by all Colab tools (which use ephemeral contexts with the saved state).
 
 **Steps:**
 1. Run `python scripts/colab-tools/auth_setup.py`
@@ -78,7 +90,7 @@ Validate a notebook's structure and code without running in Colab.
 
 ### /nb-verify — Full Colab verification pipeline
 
-The main event: validate locally, upload to Drive, run in Colab, take screenshots.
+Validate locally, upload to Drive, run in Colab, take screenshots.
 
 **Prerequisites:**
 - Auth set up via `/nb-auth`
@@ -100,7 +112,19 @@ The main event: validate locally, upload to Drive, run in Colab, take screenshot
    - Rendering issues
    - Missing output
    - Broken widgets or form cells
-5. Return the Drive file ID + screenshot paths
+5. **Change-specific checklist:** Before declaring verification complete,
+   enumerate every user-visible change that was made. For each change,
+   confirm it appears in at least one screenshot. If any change is NOT
+   visible (falls between viewport positions):
+   - **First (always try this):** Re-run the screenshot script with a higher
+     `--num-sections` value (e.g., 10, 15, 20) until the missing item is
+     captured. This is fast and cheap — "fell between positions" is never an
+     acceptable reason to skip when you can just increase the density.
+   - **Only if automated capture is impossible** (e.g., the item requires
+     interactive input that Run All can't provide): explicitly flag the item
+     to the user with a concrete reason why it can't be captured.
+   Do NOT declare "looks clean" if unchecked items remain.
+6. Return the Drive file ID + screenshot paths + checklist results
 
 **Flags for colab_screenshot.py:**
 - `--no-run` — screenshot without executing cells
@@ -131,6 +155,97 @@ that would otherwise block execution:
 Both handlers use JavaScript that pierces Colab's shadow DOM to find and click
 buttons, since standard Playwright selectors can't reach elements inside web
 component shadow roots.
+
+### /nb-review — Student perspective review
+
+Run a pedagogical review of Colab screenshots against the student review checklist.
+Uses the Anthropic API to evaluate the notebook from a BMI 512 student's perspective.
+
+**Prerequisites:**
+- `ANTHROPIC_API_KEY` set in environment
+- Screenshots already captured via `/nb-verify` or `student_walkthrough.py`
+- Notebook .ipynb file available locally
+
+**Steps:**
+1. Ensure screenshots exist (run `/nb-verify` first if needed)
+2. Run the review:
+   ```bash
+   python scripts/colab-tools/student_review.py \
+     --screenshots ./colab_screenshots \
+     --notebook path/to/notebook.ipynb \
+     --human-readable
+   ```
+3. Review the output — each checklist item is evaluated as pass/fail/unclear
+4. For failures: check severity and auto-fixable flag
+5. Apply fixes to the generator script, regenerate, re-verify, re-review
+
+**Flags for student_review.py:**
+- `--screenshots DIR` — directory containing PNG screenshots (required)
+- `--notebook PATH` — path to the .ipynb file (required)
+- `--docs DIR` — optional teaching design docs for additional context
+- `--output PATH` — write JSON result to file
+- `--model MODEL` — Claude model to use (default: claude-sonnet-4-20250514)
+- `--human-readable` — print formatted report to stderr
+
+**Output:** JSON with pass/fail/unclear for each of 10 checklist items, plus
+severity, evidence, and suggested fixes for failures.
+
+**Checklist items:** task_complexity, case_variety, ui_clarity, fhir_visibility,
+feedback_quality, dashboard_readability, activity_flow, code_hidden,
+game_mechanics, clinical_plausibility. See `references/student-review-checklist.md`
+for full definitions.
+
+### /nb-ship — Autonomous quality pipeline
+
+The top-level orchestrator: validate → generate → upload → walkthrough → review →
+fix → iterate until the notebook passes all checklist items or max iterations reached.
+
+**Prerequisites:**
+- All prerequisites from `/nb-verify` and `/nb-review`
+- Generator script exists for the notebook
+- Drive file ID for upload target
+
+**Steps:**
+1. Run the fix loop:
+   ```bash
+   python scripts/colab-tools/fix_loop.py \
+     --generator create_prototype_demo.py \
+     --notebook prototypes/you_are_the_agent_demo.ipynb \
+     --file-id <drive_file_id> \
+     --max-iterations 5
+   ```
+2. The loop automatically:
+   - Generates the notebook from the generator script
+   - Validates locally
+   - Runs a student walkthrough (interactive, with Claude-powered decisions)
+   - Reviews screenshots against the pedagogy checklist
+   - For auto-fixable issues: generates and applies fixes to the generator
+   - For non-auto-fixable issues: flags for human review
+   - Repeats until all items pass or max iterations reached
+3. Review the final report for:
+   - Issues fixed (with before/after)
+   - Issues flagged for human review (with evidence)
+   - Iteration history
+
+**Flags for fix_loop.py:**
+- `--generator PATH` — generator script (required)
+- `--notebook PATH` — output notebook path (required)
+- `--file-id ID` — Drive file ID (required)
+- `--max-iterations N` — max fix iterations (default: 5)
+- `--num-cases N` — cases in walkthrough (default: 2)
+- `--model MODEL` — Claude model for review + fixes
+- `--headless` — headless browser mode
+- `--output PATH` — save report JSON
+
+**Termination conditions:**
+1. All checklist items pass
+2. Max iterations reached
+3. No auto-fixable issues remain
+4. Same issue persists across 2 consecutive iterations (demoted to flagged)
+
+**NOTE:** The fix loop needs Drive upload between iterations. When run standalone,
+it flags the upload step. When invoked via the `/nb-ship` skill, Claude Code
+handles the upload via the google-personal MCP server.
 
 ## Model-Invoked Behaviors
 
@@ -191,8 +306,10 @@ Triggered when the user says "ship this notebook", "make it ready", "verify end-
 1. `/nb-validate` — catch code errors locally
 2. Upload to Drive (detect available method)
 3. `/nb-verify` — Colab screenshots
-4. Report findings
-5. If issues found: fix in generator, regenerate, re-verify
+4. `/nb-review` — student perspective review
+5. Report findings
+6. If issues found: fix in generator, regenerate, re-verify, re-review
+7. For autonomous iteration: use `/nb-ship`
 
 ## Troubleshooting
 
@@ -228,7 +345,7 @@ Auth file may be corrupted or expired. Delete `~/.colab-notebook-tools/auth.json
 The script uses JavaScript to pierce Colab's shadow DOM and click "Grant access".
 If this fails:
 1. Colab may have changed its dialog component — check browser DevTools for the
-   button element type and update `dismiss_dialog()` in `colab_screenshot.py`
+   button element type and update `dismiss_dialog()` in `colab_common.py`
 2. The secret must already exist in the user's Colab Secrets (key icon → left
    sidebar). The script grants notebook access, it doesn't create secrets.
 3. Try running without `--no-grant-secrets` (default grants access)
@@ -280,7 +397,16 @@ container — `window.scrollTo()` has no effect. The screenshot script must dete
 and scroll this element. If sections look identical, the scroll container selector
 needs updating (Colab may change its DOM structure).
 
+### Student review returns all "unclear"
+This usually means the screenshots don't contain enough visible content. Try:
+1. Increase `--num-sections` to capture more of the notebook
+2. Use `student_walkthrough.py` instead of `colab_screenshot.py` to get
+   cell-level screenshots with actual interaction
+3. Check that the API key is set and the model is available
+
 ## References
 
 - [Notebook creation patterns](references/nb-creation-patterns.md) — best practices for Colab-ready notebooks
 - [Colab verification details](references/colab-verification.md) — verification pipeline internals
+- [Student review checklist](references/student-review-checklist.md) — the 10-item pedagogy checklist
+- [Playwright interaction patterns](references/playwright-interaction.md) — cell interaction details

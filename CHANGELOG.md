@@ -8,6 +8,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Unified notebook quality pipeline** — expanded `colab-notebook-tools` skill
+  with student perspective review, interactive walkthrough, and autonomous fix loop.
+  - `scripts/colab-tools/colab_common.py` — shared Playwright utilities extracted
+    from `colab_screenshot.py` (auth, dialog handling, scroll, DOM traversal)
+  - `scripts/colab-tools/colab_interact.py` — individual cell interaction: run
+    single cells, set dropdown values, cell-level screenshots, playbook-driven
+    scripted interactions
+  - `scripts/colab-tools/student_review.py` — sends Colab screenshots + notebook
+    to Claude API for systematic pedagogical evaluation against a 10-item checklist
+    (task_complexity, case_variety, ui_clarity, etc.)
+  - `scripts/colab-tools/student_walkthrough.py` — autonomous agent that plays
+    through the notebook as a student: runs setup, selects dropdown options using
+    Claude-powered decision-making, captures screenshots at each step
+  - `scripts/colab-tools/fix_loop.py` — autonomous iteration loop: generate →
+    validate → upload → walkthrough → review → auto-fix → repeat (up to 5 iterations)
+  - `.claude/skills/colab-notebook-tools/references/student-review-checklist.md` —
+    10-item pedagogy checklist with pass/fail criteria and auto-fixability metadata
+  - `.claude/skills/colab-notebook-tools/references/playwright-interaction.md` —
+    cell interaction patterns documentation
+  - New skill commands: `/nb-review` (student perspective review), `/nb-ship`
+    (full autonomous pipeline)
+
+### Changed
+
+- **Refactored `colab_screenshot.py`** to import shared utilities from
+  `colab_common.py` instead of duplicating code. Same behavior, cleaner structure.
+- **Updated SKILL.md** with 6-layer architecture (authoring → validation →
+  interaction → verification → review → autonomous iteration) and all new commands.
+
 - **`colab-notebook-tools` skill** (`.claude/skills/colab-notebook-tools/`) —
   Claude Code skill for the full Jupyter notebook lifecycle: create, edit,
   validate locally, upload to Drive, execute in Colab, and visually verify via
