@@ -2,6 +2,10 @@
 """
 Generate the demo prototype notebook: "You Are the Agent" with FHIR grounding.
 
+Two-activity design:
+  Activity 1: Student acts as the agent (manual FHIR queries + classification)
+  Activity 2: Student writes prompts for an AI agent (repeatable, scored)
+
 All code cells use cellView: "form" metadata so students never see Python code.
 FHIR queries are surfaced in output so students learn the data layer.
 """
@@ -25,7 +29,14 @@ def md_cell(source):
 
 
 def form_cell(source):
-    lines = source if isinstance(source, list) else [source]
+    # Split into individual lines for Colab's #@param parser.
+    # Colab needs separate lines in the source array to detect all form fields.
+    if isinstance(source, list):
+        lines = source
+    else:
+        lines = [line + "\n" for line in source.split("\n")]
+        if lines:
+            lines[-1] = lines[-1].rstrip("\n")  # no trailing newline on last line
     return {
         "cell_type": "code", "id": _id(),
         "metadata": {"cellView": "form"},
@@ -97,14 +108,16 @@ display(Markdown(
     "|-----------|--------|--------|\n"
     f"| FHIR Server | Connected | `{FHIR_BASE.split('//')[1].split('/')[0]}` · FHIR R4 |\n"
     f"| Patient records | {patient_count} | Synthetic cohort with diabetes phenotypes |\n"
-    f"| AI Coach | {'Ready' if _anthropic_client else 'Not configured'} "
-    f"| {'Claude — for coaching suggestions' if _anthropic_client else 'Add ANTHROPIC_API_KEY in Secrets (see above)'} |\n"
+    f"| AI Agent | {'Ready' if _anthropic_client else 'Not configured'} "
+    f"| {'Claude — for Activity 2' if _anthropic_client else 'Add ANTHROPIC_API_KEY in Secrets (see above)'} |\n"
 ))
 """.strip()
 
 
 TOOLS = r"""
 #@title Step 2: Load clinical query tools
+
+import random as _random
 
 # === Coding systems ===
 SNOMED = {"t1d": "46635009", "t2d": "44054006", "ckd": "709044004"}
@@ -172,7 +185,7 @@ def _search_conditions(code, max_results=50):
         })
     return fhir_url, {"total": bundle.get("total", 0), "results": rows}
 
-def _search_all_conditions(patient_id, max_results=20):
+def _search_all_conditions_raw(patient_id, max_results=20):
     fhir_url, bundle = _fhir_get("Condition", {"subject": f"Patient/{patient_id}", "_count": max_results})
     rows = []
     for entry in bundle.get("entry", []):
@@ -184,6 +197,43 @@ def _search_all_conditions(patient_id, max_results=20):
             "clinical_status": r.get("clinicalStatus", {}).get("coding", [{}])[0].get("code", ""),
         })
     return fhir_url, {"total": bundle.get("total", 0), "results": rows}
+
+# Plausible non-diabetes conditions for scrambling the problem list
+_DIABETES_CODES = {"46635009", "44054006"}  # T1D, T2D SNOMED codes
+_FAKE_CONDITIONS = [
+    {"condition": "Essential hypertension", "code": "59621000", "clinical_status": "active"},
+    {"condition": "Hyperlipidemia", "code": "55822004", "clinical_status": "active"},
+    {"condition": "Asthma", "code": "195967001", "clinical_status": "active"},
+    {"condition": "Gastroesophageal reflux disease", "code": "235595009", "clinical_status": "active"},
+    {"condition": "Osteoarthritis", "code": "396275006", "clinical_status": "active"},
+    {"condition": "Allergic rhinitis", "code": "61582004", "clinical_status": "active"},
+    {"condition": "Generalized anxiety disorder", "code": "21897009", "clinical_status": "active"},
+    {"condition": "Low back pain", "code": "279039007", "clinical_status": "active"},
+    {"condition": "Obstructive sleep apnea", "code": "78275009", "clinical_status": "active"},
+    {"condition": "Iron deficiency anemia", "code": "87522002", "clinical_status": "active"},
+]
+
+def _search_all_conditions(patient_id, max_results=20):
+    # Scrambled version: replaces diabetes diagnoses with random non-diabetes conditions
+    # so the problem list doesn't give away the answer.
+    import hashlib
+    fhir_url, raw_result = _search_all_conditions_raw(patient_id, max_results)
+    # Deterministic seed per patient so same patient always gets same fakes
+    seed = int(hashlib.md5(patient_id.encode()).hexdigest()[:8], 16)
+    rng = _random.Random(seed)
+    available_fakes = list(_FAKE_CONDITIONS)
+    rng.shuffle(available_fakes)
+    fake_idx = 0
+    scrambled = []
+    for row in raw_result["results"]:
+        if row.get("code") in _DIABETES_CODES:
+            if fake_idx < len(available_fakes):
+                scrambled.append(dict(available_fakes[fake_idx]))
+                fake_idx += 1
+            # else skip — ran out of fakes (unlikely)
+        else:
+            scrambled.append(row)
+    return fhir_url, {"total": raw_result["total"], "results": scrambled}
 
 def _search_observations(patient_id, loinc_code, max_results=5):
     fhir_url, bundle = _fhir_get("Observation", {
@@ -239,12 +289,30 @@ def _show_query(fhir_url, resource_type=None):
     extra = f" · **{resource_type}** resource" if resource_type else ""
     display(Markdown(f"> **FHIR Query:** `{fhir_url}`{extra}"))
 
+# === Ground truth ===
+def _get_ground_truth(patient_id):
+    _, conds = _search_all_conditions_raw(patient_id)
+    codes = [r.get("code", "") for r in conds.get("results", [])]
+    if "46635009" in codes:
+        return "Type 1"
+    if "44054006" in codes:
+        return "Type 2"
+    return "No diabetes"
+
 # === State ===
 _state = {
-    "question": "Is this patient more consistent with Type 1 diabetes, Type 2 diabetes, or still unclear?",
-    "patient_id": None, "patient_label": None,
-    "history": [], "evidence": {}, "final_answer": None,
-    "assessment": "No opinion yet",
+    "question": "Classify this patient: Type 1 diabetes, Type 2 diabetes, or no diabetes?",
+    "num_cases": 0,
+    "case_patients": [],
+    "current_case_idx": 0,
+    "patient_id": None,
+    "patient_label": None,
+    "history": [],
+    "evidence": {},
+    "correct_answer": None,
+    "human_results": [],
+    "agent_runs": [],
+    "agent_prompt": "",
 }
 
 def _evidence_gaps():
@@ -268,11 +336,12 @@ def _evidence_gaps():
 
 def _render_dashboard():
     lines = ["---", "## Your Agent Dashboard", ""]
-    lines.append(f"**Clinical Question:** {_state['question']}")
+    _case_num = _state["current_case_idx"] + 1
+    _total = _state["num_cases"]
+    lines.append(f"**Case {_case_num} of {_total}**")
+    lines.append(f"  \n**Clinical Question:** {_state['question']}")
     if _state["patient_label"]:
         lines.append(f"  \n**Patient:** {_state['patient_label']} · ID: `{_state['patient_id']}`")
-    _current_assessment = _state.get("assessment", "No opinion yet")
-    lines.append(f"  \n**Your current assessment:** {_current_assessment}")
     lines.append("")
 
     ev = _state["evidence"]
@@ -313,7 +382,7 @@ def _render_dashboard():
         for label, resource in gaps:
             lines.append(f"- {label} — *query* `{resource}`")
     else:
-        lines.append("*All key evidence categories covered. You may be ready to answer.*")
+        lines.append("*All key evidence categories covered. You may be ready to classify.*")
     lines.append("")
 
     lines.append("### Query Log")
@@ -327,7 +396,7 @@ def _render_dashboard():
     lines.append("\n---")
     return "\n".join(lines)
 
-# === Claude tool schemas (for the AI agent comparison) ===
+# === Claude tool schemas (for the AI agent in Activity 2) ===
 CLAUDE_TOOLS = [
     {
         "name": "get_patient",
@@ -379,8 +448,8 @@ CLAUDE_TOOLS = [
         "name": "search_all_conditions",
         "description": (
             "FHIR query: GET /Condition?subject=Patient/{id}. Returns full problem list with "
-            "SNOMED codes and clinical status. Reveals existing diagnoses, comorbidities, and "
-            "diagnostic context."
+            "SNOMED codes and clinical status. Note: diabetes-specific diagnoses have been "
+            "replaced to prevent answer leakage — use labs and medications for classification."
         ),
         "input_schema": {
             "type": "object",
@@ -438,6 +507,60 @@ def _tool_to_fhir_display(fn_name, fn_args):
         return f"GET /Encounter?subject=Patient/{pid}"
     return fn_name
 
+# Map tool names to plain-English action descriptions
+def _tool_to_human_label(fn_name, fn_args):
+    labels = {
+        "get_patient": "Get demographics",
+        "search_all_conditions": "Get problem list",
+        "search_medications": "Get treatment regimen",
+        "search_encounters": "Get encounters",
+    }
+    if fn_name == "search_observations":
+        loinc = fn_args.get("loinc_code", "")
+        loinc_labels = {
+            "4548-4": "Get HbA1c",
+            "1986-9": "Get C-peptide",
+            "39156-5": "Get BMI",
+            "2160-0": "Get creatinine",
+            "33914-3": "Get eGFR",
+            "14959-1": "Get UACR",
+        }
+        return loinc_labels.get(loinc, f"Get lab ({loinc})")
+    return labels.get(fn_name, fn_name)
+
+# Create a brief human-readable summary of what came back
+def _summarize_result(fn_name, fn_args, result):
+    if fn_name == "get_patient":
+        age = result.get("age", "?")
+        gender = result.get("gender", "?")
+        return f"Age {age}, {gender}"
+    if fn_name == "search_all_conditions":
+        items = result.get("results", [])
+        if not items:
+            return "No conditions found"
+        names = [r.get("condition", "?") for r in items[:3]]
+        suffix = f" (+{len(items)-3} more)" if len(items) > 3 else ""
+        return ", ".join(names) + suffix
+    if fn_name == "search_observations":
+        items = result.get("results", [])
+        if not items:
+            return "No results found"
+        latest = items[0]
+        return f"{latest.get('value', '?')} {latest.get('unit', '')}"
+    if fn_name == "search_medications":
+        items = result.get("results", [])
+        if not items:
+            return "No medications found"
+        names = [r.get("medication", "?") for r in items[:3]]
+        suffix = f" (+{len(items)-3} more)" if len(items) > 3 else ""
+        return ", ".join(names) + suffix
+    if fn_name == "search_encounters":
+        items = result.get("results", [])
+        if not items:
+            return "No encounters found"
+        return f"{len(items)} encounters found"
+    return ""
+
 display(Markdown("**Clinical query tools loaded.** Proceed to the next step."))
 """.strip()
 
@@ -448,18 +571,18 @@ import random as _random
 
 _final_candidates = []
 
-display(Markdown("*Querying FHIR server for working-age adults with diabetes...*"))
+display(Markdown("*Querying FHIR server for working-age adults...*"))
 
 _candidate_rows = []
 _seen_patients = set()
 _query_log = []
-_TARGET = 20
-for _label, _code in [("Likely T1D cohort", SNOMED["t1d"]), ("Likely T2D cohort", SNOMED["t2d"])]:
+_diabetic_pids = set()
+
+# --- Source 1 & 2: patients with T1D or T2D conditions ---
+for _label, _code in [("t1d", SNOMED["t1d"]), ("t2d", SNOMED["t2d"])]:
     _furl, _cond_result = _search_conditions(_code, max_results=50)
-    _query_log.append(_furl)
+    _query_log.append((_furl, "Condition"))
     for _item in _cond_result["results"]:
-        if len(_candidate_rows) >= _TARGET:
-            break
         _pid = _normalize_patient_ref(_item.get("patient_reference", ""))
         if not _pid or _pid in _seen_patients:
             continue
@@ -474,27 +597,53 @@ for _label, _code in [("Likely T1D cohort", SNOMED["t1d"]), ("Likely T2D cohort"
             "Name": _pat.get("name", ""),
             "Age": _age,
             "Gender": _pat.get("gender", ""),
-            "Seed Group": _label,
+            "_group": _label,
             "_patient_id": _pid,
         })
         _seen_patients.add(_pid)
+        _diabetic_pids.add(_pid)
+
+# --- Source 3: non-diabetic patients (metabolic syndrome phenotype) ---
+_furl_pat, _pat_bundle = _fhir_get("Patient", {"_count": "50"})
+_query_log.append((_furl_pat, "Patient"))
+for _entry in _pat_bundle.get("entry", []):
+    _pat_r = _entry.get("resource", {})
+    _pid = _pat_r.get("id")
+    if not _pid or _pid in _seen_patients:
+        continue
+    _age = _compute_age(_pat_r.get("birthDate", ""))
+    if _age is None or _age > 50:
+        continue
+    # Check this patient has NO diabetes condition
+    if _pid in _diabetic_pids:
+        continue
+    _name = _pat_r.get("name", [{}])[0]
+    _candidate_rows.append({
+        "Name": f"{' '.join(_name.get('given', []))} {_name.get('family', '')}".strip(),
+        "Age": _age,
+        "Gender": _pat_r.get("gender", ""),
+        "_group": "no_diabetes",
+        "_patient_id": _pid,
+    })
+    _seen_patients.add(_pid)
 
 # Shuffle to avoid demographic clustering from sequential FHIR results
 _random.shuffle(_candidate_rows)
 
-# Select up to 10 candidates, aiming for a mix of T1D and T2D
-_group_counts = {"Likely T1D cohort": 0, "Likely T2D cohort": 0}
-# First pass: take up to 5 from each group
+# Select up to 10 candidates, aiming for ~3-4 from each group
+_group_counts = {"t1d": 0, "t2d": 0, "no_diabetes": 0}
+_group_limits = {"t1d": 4, "t2d": 4, "no_diabetes": 4}
+# First pass: take up to limit from each group
 for _row in _candidate_rows:
-    _g = _row["Seed Group"]
-    if _group_counts[_g] >= 5:
+    _g = _row["_group"]
+    if _group_counts[_g] >= _group_limits[_g]:
         continue
     _group_counts[_g] += 1
     _row["Case #"] = len(_final_candidates) + 1
     _final_candidates.append(_row)
     if len(_final_candidates) >= 10:
         break
-# Second pass: fill remaining slots from whichever group has more
+# Second pass: fill remaining slots
 if len(_final_candidates) < 10:
     for _row in _candidate_rows:
         if _row in _final_candidates:
@@ -504,75 +653,163 @@ if len(_final_candidates) < 10:
         if len(_final_candidates) >= 10:
             break
 
-for _q in _query_log:
-    _show_query(_q, "Condition")
+for _q, _rtype in _query_log:
+    _show_query(_q, _rtype)
 
 display(Markdown(
     "## Your Patient Candidates\n\n"
-    "These working-age adults were found by querying `Condition` resources for diabetes "
-    "SNOMED codes (**46635009** = Type 1, **44054006** = Type 2), then retrieving "
-    "`Patient` demographics and filtering to age ≤ 50.\n\n"
-    "The **Seed Group** shows which diagnosis code matched — but that label might "
-    "not be the whole story. Your job is to gather evidence and decide for yourself.\n\n"
-    "*The cohort of 1,027 synthetic patients was purpose-built with 6 canonical "
-    "phenotypes spanning the diabetes–CKD spectrum (see the data overview above).*"
+    "These working-age adults (age ≤ 50) were drawn from a cohort of 1,027 synthetic "
+    "patients. The pool includes patients with diabetes *and* patients without it — "
+    "not every patient with metabolic risk factors has diabetes.\n\n"
+    "The game tracks both your **accuracy** (% correct) and **number of queries**. "
+    "In real medicine, you'd look at everything — but in agent design, every query "
+    "costs time, tokens, and money.\n\n"
+    "*The cohort spans 6 canonical phenotypes along the diabetes–CKD spectrum "
+    "(see the data overview above).*"
 ))
-_cdf = pd.DataFrame(_final_candidates)[["Case #", "Name", "Age", "Gender", "Seed Group"]]
+_cdf = pd.DataFrame(_final_candidates)[["Case #", "Name", "Age", "Gender"]]
 display(HTML(_cdf.to_html(index=False)))
-display(Markdown(f"**{len(_final_candidates)} candidates loaded.** Proceed to Step 4 to select a case."))
+display(Markdown(f"**{len(_final_candidates)} candidates loaded.** Proceed to Step 4 to choose how many cases to work."))
 """.strip()
 
 
-SELECT_CASE = r"""
-#@title Step 4: Select a case to investigate
-case_number = 1 #@param {type:"integer"}
+CHOOSE_NUM_CASES = r"""
+#@title Step 4: Choose how many cases to work
+num_cases = 3 #@param {type:"integer"}
 
 if "_final_candidates" not in dir() or not _final_candidates:
     display(Markdown(
-        "**Run Step 3 first.** The candidate pool hasn't been built yet.\n\n"
-        "Click the **Run** button (▶) on **Step 3** above and wait for it to finish — "
-        "you'll see a table of patients and a message saying candidates are loaded."
+        "**Run Step 3 first.** The candidate pool hasn't been built yet."
     ))
-elif case_number < 1 or case_number > len(_final_candidates):
-    display(Markdown(f"**Invalid case number.** Choose between 1 and {len(_final_candidates)}."))
+elif num_cases < 1 or num_cases > len(_final_candidates):
+    display(Markdown(f"**Choose between 1 and {len(_final_candidates)} cases.**"))
 else:
-    _sel = _final_candidates[case_number - 1]
+    _state["num_cases"] = num_cases
+    _state["case_patients"] = _final_candidates[:num_cases]
+    _state["current_case_idx"] = 0
+    _state["human_results"] = []
+    _state["agent_runs"] = []
+
+    # Load first case
+    _sel = _state["case_patients"][0]
     _state["patient_id"] = _sel["_patient_id"]
     _state["patient_label"] = f"{_sel['Name']} (Age {_sel['Age']}, {_sel['Gender']})"
     _state["history"] = []
     _state["evidence"] = {}
-    _state["final_answer"] = None
-    _state["assessment"] = "No opinion yet"
+    _state["correct_answer"] = _get_ground_truth(_sel["_patient_id"])
+
+    _case_rows = ""
+    for i, p in enumerate(_state["case_patients"]):
+        marker = "→" if i == 0 else " "
+        _case_rows += f"| {marker} | {i+1} | {p['Name']} | {p['Age']} | {p['Gender']} |\n"
 
     display(Markdown(
-        f"## Case {case_number} Selected\n\n"
-        f"**Patient:** {_state['patient_label']} · ID: `{_state['patient_id']}`\n\n"
-        f"**Clinical question:** {_state['question']}\n\n"
-        "Use **Step 5** below to start querying the FHIR server. "
-        "Change the dropdown, click Run, and review what comes back."
+        f"## Working {num_cases} Cases\n\n"
+        "You'll classify these patients one at a time.\n\n"
+        "| | Case | Patient | Age | Gender |\n"
+        "|-|------|---------|-----|--------|\n"
+        f"{_case_rows}\n"
+        f"**Starting with Case 1:** {_state['patient_label']}\n\n"
+        "Use **Step 5** below — query the FHIR server, then classify when ready."
     ))
 """.strip()
 
 
-GATHER_EVIDENCE = r"""
-#@title Step 5: Gather evidence (change dropdown → click Run → repeat)
-action = "Get demographics" #@param ["Get demographics", "Get problem list", "Get C-peptide", "Get HbA1c", "Get BMI", "Get eGFR", "Get treatment regimen", "Get encounters"]
-assessment = "No opinion yet" #@param ["No opinion yet", "Slight lean toward Type 1", "Slight lean toward Type 2", "Strongly leaning Type 1", "Strongly leaning Type 2", "Confident Type 1", "Confident Type 2", "Unclear — conflicting evidence"]
-ready_to_answer = False #@param {type:"boolean"}
+INVESTIGATE = r"""
+#@title Step 5: Investigate and classify (change dropdown → click Run → repeat)
+action = "Get demographics" #@param ["Get demographics", "Get problem list", "Get C-peptide", "Get HbA1c", "Get BMI", "Get eGFR", "Get treatment regimen", "Get encounters", "— CLASSIFY —", "Classify: Type 1", "Classify: Type 2", "Classify: No diabetes"]
 
 if _state["patient_id"] is None:
-    display(Markdown("**Select a case first** (Step 4 above)."))
-elif ready_to_answer:
-    _state["assessment"] = assessment
+    display(Markdown("**Run Step 4 first.**"))
+elif _state["current_case_idx"] >= _state["num_cases"]:
+    display(Markdown("**All cases complete.** See your results in Step 6."))
+elif action == "— CLASSIFY —":
     display(Markdown(
-        f"## Ready to Answer\n\n"
-        f"**Your current assessment:** {assessment}\n\n"
-        f"**Queries used:** {len(_state['history'])}\n\n"
-        "Scroll down to **Step 7** to record your final classification and rationale."
+        "**Pick a classification** — select *Classify: Type 1*, *Classify: Type 2*, "
+        "or *Classify: No diabetes* from the dropdown, then click Run."
     ))
+elif action.startswith("Classify: "):
+    # ---- Classification logic ----
+    classification = action.replace("Classify: ", "")
+    _queries_used = len([h for h in _state["history"] if h.get("fhir_query") != "—"])
+    _correct_answer = _state["correct_answer"]
+    _is_correct = (classification == _correct_answer)
+    _case_num = _state["current_case_idx"] + 1
+
+    _state["human_results"].append({
+        "case_num": _case_num,
+        "patient_id": _state["patient_id"],
+        "patient_label": _state["patient_label"],
+        "classification": classification,
+        "correct_answer": _correct_answer,
+        "correct": _is_correct,
+        "queries_used": _queries_used,
+    })
+
+    # Immediate feedback
+    if _is_correct:
+        _feedback = f"## ✓ Correct!\n\nThe answer is **{_correct_answer}**."
+    else:
+        _feedback = (
+            f"## ✗ Incorrect\n\n"
+            f"You answered **{classification}** — the correct answer is **{_correct_answer}**."
+        )
+
+    # Progress table
+    _progress_rows = ""
+    for r in _state["human_results"]:
+        _mark = "✓" if r["correct"] else "✗"
+        _progress_rows += (
+            f"| {r['case_num']} | {r['patient_label']} | "
+            f"{r['classification']} | {r['correct_answer']} | {_mark} | {r['queries_used']} |\n"
+        )
+
+    # Advance to next case
+    _state["current_case_idx"] += 1
+    if _state["current_case_idx"] < _state["num_cases"]:
+        _next = _state["case_patients"][_state["current_case_idx"]]
+        _state["patient_id"] = _next["_patient_id"]
+        _state["patient_label"] = f"{_next['Name']} (Age {_next['Age']}, {_next['Gender']})"
+        _state["history"] = []
+        _state["evidence"] = {}
+        _state["correct_answer"] = _get_ground_truth(_next["_patient_id"])
+
+        display(Markdown(
+            f"{_feedback}\n\n"
+            "---\n"
+            "### Progress\n\n"
+            "| Case | Patient | You | Correct | | Queries |\n"
+            "|------|---------|-----|---------|---|--------|\n"
+            f"{_progress_rows}\n"
+            f"**Next — Case {_state['current_case_idx']+1}:** "
+            f"{_state['patient_label']}\n\n"
+            "Change the dropdown back to a query action and keep going."
+        ))
+    else:
+        # All cases done
+        _total_q = sum(r["queries_used"] for r in _state["human_results"])
+        _avg_q = _total_q / len(_state["human_results"])
+        _num_correct = sum(1 for r in _state["human_results"] if r["correct"])
+        _pct = 100 * _num_correct / len(_state["human_results"])
+
+        display(Markdown(
+            f"{_feedback}\n\n"
+            "---\n"
+            "### Activity 1 Complete!\n\n"
+            "| Case | Patient | You | Correct | | Queries |\n"
+            "|------|---------|-----|---------|---|--------|\n"
+            f"{_progress_rows}\n"
+            f"**Score: {_num_correct}/{len(_state['human_results'])} correct ({_pct:.0f}%), "
+            f"{_avg_q:.1f} avg queries**\n\n"
+            "See full results in **Step 6**, then move to **Activity 2** (Step 7)."
+        ))
 else:
-    _state["assessment"] = assessment
+    # ---- Evidence gathering logic ----
     _pid = _state["patient_id"]
+    _case_num = _state["current_case_idx"] + 1
+    _total = _state["num_cases"]
+
+    display(Markdown(f"**Case {_case_num} of {_total}:** {_state['patient_label']}"))
 
     if action == "Get demographics":
         _furl, _result = _get_patient(_pid)
@@ -677,329 +914,514 @@ else:
 """.strip()
 
 
-LLM_COACH = r"""
-#@title Step 6: Ask the AI Coach for a suggestion
+ACTIVITY1_RESULTS = r"""
+#@title Step 6: Your results
 
-if _state["patient_id"] is None:
-    display(Markdown("**Select a case first** (Step 4 above)."))
-elif _anthropic_client is None:
-    display(Markdown(
-        "**AI Coach requires an API key.** If you haven't set one up yet, see the "
-        "\"Set Up Your API Key\" section above. You can continue to the next step "
-        "and come back to this one after configuring your key."
-    ))
+if not _state.get("human_results"):
+    display(Markdown("**Complete Activity 1 first** (Step 5)."))
 else:
-    display(Markdown("*Asking the AI coach...*"))
-    _coach_state = {
-        "question": _state["question"],
-        "patient_id": _state["patient_id"],
-        "evidence_collected": list(_state["evidence"].keys()),
-        "missing_evidence": [g[0] for g in _evidence_gaps()],
-        "steps_taken": len(_state["history"]),
-    }
-    _coach_resp = _anthropic_client.messages.create(
-        model=MODEL, max_tokens=300,
-        messages=[{
-            "role": "user",
-            "content": (
-                "You are coaching a clinical informatics student who is acting as "
-                "an agent reviewing a diabetes case using FHIR queries. "
-                "Given the current state, recommend exactly one next FHIR query "
-                "from: Get demographics (Patient), Get problem list (Condition), "
-                "Get C-peptide (Observation), Get HbA1c (Observation), Get BMI (Observation), "
-                "Get eGFR (Observation), Get treatment regimen (MedicationRequest), "
-                "Get encounters (Encounter), or Finish and answer. "
-                "Name the FHIR resource and explain why in 2-3 sentences.\n\n"
-                + json.dumps(_coach_state, indent=2)
-            ),
-        }],
-    )
-    _suggestion = "".join(b.text for b in _coach_resp.content if hasattr(b, "text"))
-    display(Markdown(f"## AI Coach Suggestion\n\n{_suggestion}"))
-""".strip()
-
-
-RECORD_ANSWER = r"""
-#@title Step 7: Record your answer
-classification = "Likely Type 1" #@param ["Likely Type 1", "Likely Type 2", "Unclear / needs more review"]
-rationale = "" #@param {type:"string"}
-
-if _state["patient_id"] is None:
-    display(Markdown("**Select a case first** (Step 4)."))
-elif not rationale.strip():
-    display(Markdown(
-        "**Please enter a rationale** in the text field above. "
-        "Cite specific FHIR findings (e.g., 'C-peptide was 0.3 ng/mL from Observation')."
-    ))
-else:
-    _state["final_answer"] = {"classification": classification, "rationale": rationale.strip()}
-    _state["history"].append({
-        "step": len(_state["history"]) + 1,
-        "fhir_query": "—",
-        "note": f"Final answer: {classification}",
-    })
-    display(Markdown(
-        f"## Your Answer Recorded\n\n"
-        f"**Patient:** {_state['patient_label']}\n\n"
-        f"**Classification:** {classification}\n\n"
-        f"**Rationale:** {rationale}\n\n"
-        f"**FHIR queries used:** {len(_state['history']) - 1}\n\n"
-        "---\n\n"
-        "*Scroll down to watch the AI agent work the same case.*"
-    ))
-""".strip()
-
-
-LLM_AGENT = r"""
-#@title Step 8: Watch the AI agent work the same case
-
-_CONFIDENCE_SCALE = [
-    "No opinion yet",
-    "Slight lean toward Type 1", "Slight lean toward Type 2",
-    "Strongly leaning Type 1", "Strongly leaning Type 2",
-    "Confident Type 1", "Confident Type 2",
-    "Unclear — conflicting evidence",
-]
-
-def _tool_to_human_label(fn_name, fn_args):
-    # Map tool names to plain-English action descriptions.
-    labels = {
-        "get_patient": "Get demographics",
-        "search_all_conditions": "Get problem list",
-        "search_medications": "Get treatment regimen",
-        "search_encounters": "Get encounters",
-    }
-    if fn_name == "search_observations":
-        loinc = fn_args.get("loinc_code", "")
-        loinc_labels = {
-            "4548-4": "Get HbA1c",
-            "1986-9": "Get C-peptide",
-            "39156-5": "Get BMI",
-            "2160-0": "Get creatinine",
-            "33914-3": "Get eGFR",
-            "14959-1": "Get UACR",
-        }
-        return loinc_labels.get(loinc, f"Get lab ({loinc})")
-    return labels.get(fn_name, fn_name)
-
-def _tool_clinical_context(fn_name, fn_args):
-    # Brief clinical reason for choosing this tool.
-    contexts = {
-        "get_patient": "age at onset context",
-        "search_all_conditions": "existing diagnoses and comorbidities",
-        "search_medications": "insulin-only vs oral agent pattern",
-        "search_encounters": "care pattern context",
-    }
-    if fn_name == "search_observations":
-        loinc = fn_args.get("loinc_code", "")
-        obs_contexts = {
-            "4548-4": "glycemic control (severity, not type)",
-            "1986-9": "direct T1/T2 differentiator",
-            "39156-5": "insulin resistance context",
-            "33914-3": "kidney function / CKD staging",
-        }
-        return obs_contexts.get(loinc, "lab value")
-    return contexts.get(fn_name, "")
-
-def _summarize_result(fn_name, fn_args, result):
-    # Create a brief human-readable summary of what came back.
-    if fn_name == "get_patient":
-        age = result.get("age", "?")
-        gender = result.get("gender", "?")
-        return f"Age {age}, {gender}"
-    if fn_name == "search_all_conditions":
-        items = result.get("results", [])
-        if not items:
-            return "No conditions found"
-        names = [r.get("condition", "?") for r in items[:3]]
-        suffix = f" (+{len(items)-3} more)" if len(items) > 3 else ""
-        return ", ".join(names) + suffix
-    if fn_name == "search_observations":
-        items = result.get("results", [])
-        if not items:
-            return "No results found"
-        latest = items[0]
-        return f"{latest.get('value', '?')} {latest.get('unit', '')}"
-    if fn_name == "search_medications":
-        items = result.get("results", [])
-        if not items:
-            return "No medications found"
-        names = [r.get("medication", "?") for r in items[:3]]
-        suffix = f" (+{len(items)-3} more)" if len(items) > 3 else ""
-        return ", ".join(names) + suffix
-    if fn_name == "search_encounters":
-        items = result.get("results", [])
-        if not items:
-            return "No encounters found"
-        return f"{len(items)} encounters found"
-    return ""
-
-if _state["patient_id"] is None:
-    display(Markdown("**Select a case first** (Step 4)."))
-elif _anthropic_client is None:
-    display(Markdown(
-        "**AI Agent requires an API key.** If you haven't set one up yet, see the "
-        "\"Set Up Your API Key\" section above."
-    ))
-else:
-    _agent_pid = _state["patient_id"]
-    _agent_question = (
-        f"Review patient {_agent_pid} ({_state['patient_label']}). "
-        "Decide whether the case is more consistent with Type 1 diabetes, "
-        "Type 2 diabetes, or still unclear. Use the available FHIR query tools "
-        "to gather evidence. Cite specific findings in your final answer."
-    )
-    _agent_system = (
-        "You are a clinical data assistant querying a FHIR server with synthetic "
-        "patient data. You work as an agent: query one tool at a time, reason about "
-        "the result, then decide your next step.\n\n"
-        "After EACH tool result, you MUST include a reasoning block with:\n"
-        "1. What the result means clinically\n"
-        "2. Your current assessment on this scale: No opinion yet / Slight lean toward "
-        "Type 1 / Slight lean toward Type 2 / Strongly leaning Type 1 / Strongly "
-        "leaning Type 2 / Confident Type 1 / Confident Type 2 / Unclear — conflicting "
-        "evidence\n"
-        "3. What you want to query next and why (or that you're ready to answer)\n\n"
-        "STOP querying when you reach 'Confident' level — do not run every tool. "
-        "The goal is efficient clinical reasoning, not exhaustive data collection.\n\n"
-        "Prefer direct evidence (C-peptide) over indirect (BMI). If evidence is "
-        "conflicting, say unclear. Be concise but show your reasoning."
-    )
-
-    display(Markdown("## AI Agent Run\n\n*The AI agent is querying the same patient using the same FHIR tools...*\n"))
-
-    _agent_messages = [{"role": "user", "content": _agent_question}]
-    _agent_tool_log = []
-    _agent_confidence_trajectory = ["No opinion yet"]
-    _final_text = "(Agent reached maximum steps)"
-
-    for _step in range(1, 9):
-        _resp = _anthropic_client.messages.create(
-            model=MODEL, max_tokens=4096, system=_agent_system,
-            messages=_agent_messages, tools=CLAUDE_TOOLS,
+    _h = _state["human_results"]
+    _rows = ""
+    for r in _h:
+        _mark = "✓" if r["correct"] else "✗"
+        _rows += (
+            f"| {r['case_num']} | {r['patient_label']} | "
+            f"{r['classification']} | {r['correct_answer']} | {_mark} | {r['queries_used']} |\n"
         )
-        _tblocks = [b for b in _resp.content if b.type == "tool_use"]
-        _text_blocks = [b.text for b in _resp.content if b.type == "text" and b.text.strip()]
 
-        if not _tblocks:
-            _final_text = "".join(b.text for b in _resp.content if hasattr(b, "text"))
-            break
+    _num_correct = sum(1 for r in _h if r["correct"])
+    _pct = 100 * _num_correct / len(_h)
+    _total_q = sum(r["queries_used"] for r in _h)
+    _avg_q = _total_q / len(_h)
 
-        # Display agent reasoning (text blocks before tool calls)
-        for _reasoning in _text_blocks:
-            display(Markdown(f"> {_reasoning.replace(chr(10), chr(10) + '> ')}"))
-            # Try to extract confidence level from reasoning
-            for _conf in reversed(_CONFIDENCE_SCALE):
-                if _conf.lower() in _reasoning.lower():
-                    if _agent_confidence_trajectory[-1] != _conf:
-                        _agent_confidence_trajectory.append(_conf)
-                    break
-
-        _acontent = []
-        for _b in _resp.content:
-            if _b.type == "text":
-                _acontent.append({"type": "text", "text": _b.text})
-            elif _b.type == "tool_use":
-                _acontent.append({"type": "tool_use", "id": _b.id, "name": _b.name, "input": _b.input})
-        _agent_messages.append({"role": "assistant", "content": _acontent})
-
-        _tool_results = []
-        for _tb in _tblocks:
-            _human_label = _tool_to_human_label(_tb.name, _tb.input)
-            _clinical_ctx = _tool_clinical_context(_tb.name, _tb.input)
-            _fhir_display = _tool_to_fhir_display(_tb.name, _tb.input)
-            _tr = _tool_runner(_tb.name, _tb.input)
-            _result_summary = _summarize_result(_tb.name, _tb.input, _tr)
-            _reasoning_text = " · ".join(_text_blocks) if _text_blocks else ""
-            _agent_tool_log.append({
-                "Step": _step,
-                "Action": _human_label,
-                "FHIR Query": _fhir_display,
-                "Result": _result_summary,
-                "Reasoning": _reasoning_text[:120] + ("..." if len(_reasoning_text) > 120 else ""),
-            })
-            display(Markdown(
-                f"**Step {_step}: {_human_label}** — "
-                f"{_clinical_ctx}\n"
-                f"  \nFHIR: `{_fhir_display}` → {_result_summary}"
-            ))
-            _tool_results.append({
-                "type": "tool_result", "tool_use_id": _tb.id,
-                "content": json.dumps(_tr, default=str),
-            })
-        _agent_messages.append({"role": "user", "content": _tool_results})
-
-    # Store trajectory for debrief comparison
-    _state["_agent_confidence_trajectory"] = _agent_confidence_trajectory
-    _state["_agent_tool_log"] = _agent_tool_log
-    _state["_agent_steps"] = len(_agent_tool_log)
-
-    display(Markdown("---"))
-    display(Markdown(f"### AI Agent's Answer\n\n{_final_text}"))
-    if _agent_confidence_trajectory and len(_agent_confidence_trajectory) > 1:
-        _traj_str = " → ".join(_agent_confidence_trajectory)
-        display(Markdown(f"**Agent confidence trajectory:** {_traj_str}"))
-    if _agent_tool_log:
-        display(Markdown("### AI Agent's FHIR Query Log"))
-        display(HTML(pd.DataFrame(_agent_tool_log).to_html(index=False)))
+    display(Markdown(
+        "## Activity 1: Your Results\n\n"
+        "| Case | Patient | Your Answer | Correct Answer | | Queries |\n"
+        "|------|---------|-------------|----------------|---|--------|\n"
+        f"{_rows}\n"
+        f"### Grade: {_num_correct}/{len(_h)} correct ({_pct:.0f}%) · {_avg_q:.1f} avg queries\n\n"
+        "---\n\n"
+        "Now move to **Activity 2** (Step 7) — write a prompt and see if the AI agent "
+        "can do better (or worse)."
+    ))
 """.strip()
 
 
-DEBRIEF = r"""
-#@title Step 9: Compare and reflect
+PROMPT_EDITOR = r"""
+#@title Step 7: Write your AI prompt
+agent_prompt = "You are a clinical data assistant classifying diabetes patients using FHIR queries. Classify each patient as Type 1 diabetes, Type 2 diabetes, or No diabetes. Use the minimum queries needed to reach confidence. Prefer direct evidence (C-peptide, medications) over indirect (BMI)." #@param {type:"string"}
 
-display(Markdown("## Comparison & Reflection"))
-
-if _state["final_answer"]:
-    display(Markdown(
-        f"### Your Answer\n\n"
-        f"**Classification:** {_state['final_answer']['classification']}\n\n"
-        f"**Rationale:** {_state['final_answer']['rationale']}\n\n"
-        f"**FHIR queries used:** {len(_state['history']) - 1}\n\n"
-        f"**Final assessment:** {_state.get('assessment', 'Not recorded')}"
-    ))
-
-# Confidence trajectory comparison
-_student_assessment = _state.get("assessment", "No opinion yet")
-_agent_trajectory = _state.get("_agent_confidence_trajectory", [])
-_agent_steps = _state.get("_agent_steps", 0)
-_student_steps = len([h for h in _state.get("history", []) if h.get("fhir_query") != "—"])
-
-if _agent_trajectory and len(_agent_trajectory) > 1:
-    display(Markdown(
-        "### Confidence Trajectories\n\n"
-        "| | You | AI Agent |\n"
-        "|---|-----|----------|\n"
-        f"| Final assessment | {_student_assessment} | {_agent_trajectory[-1]} |\n"
-        f"| Queries used | {_student_steps} | {_agent_steps} |\n"
-        f"| Confidence path | *(tracked via dropdown)* | {' → '.join(_agent_trajectory)} |\n"
-        "\n"
-        "**Discussion:** Did the agent reach confidence faster or slower than you? "
-        "What evidence was decisive for each of you? Could either of you have "
-        "stopped earlier without losing accuracy?"
-    ))
+_state["agent_prompt"] = agent_prompt
 
 display(Markdown(
-    "### Discussion Questions\n\n"
-    "1. **Query strategy:** Did you and the AI query the same FHIR resources? "
-    "In what order? Which query was most informative?\n"
-    "2. **Stopping point:** The agent stops when it reaches 'Confident' level. "
-    "Did you query more or fewer resources? What made you feel you had enough evidence?\n"
-    "3. **Clinical reasoning:** Look at the agent's reasoning after each step. "
-    "Did it weigh the evidence the same way you did? Where did it differ?\n"
-    "4. **FHIR resource value:** Which resource type (`Patient`, `Condition`, "
-    "`Observation`, `MedicationRequest`, `Encounter`) mattered most for this "
-    "question? Would that change for a different clinical question?\n"
-    "5. **Uncertainty:** Did either you or the AI express appropriate uncertainty? "
-    "What FHIR data (if it existed) would resolve the ambiguity?\n"
-    "6. **The agent loop:** *observe evidence → choose FHIR query → execute → "
-    "update assessment → repeat or answer.* What makes the 'when to stop' decision hard?"
+    "## Activity 2: Write Your AI Prompt\n\n"
+    "This prompt tells the AI agent how to approach the classification task. "
+    f"It will use this prompt for all {_state.get('num_cases', '?')} cases.\n\n"
+    f"**Your prompt:**\n\n> {agent_prompt[:400]}{'...' if len(agent_prompt) > 400 else ''}\n\n"
+    "**Ideas to try:**\n"
+    "- Emphasize efficiency: *\"never query more than 3 tools\"*\n"
+    "- Change priorities: *\"always start with C-peptide\"*\n"
+    "- Add constraints: *\"ignore BMI — it's not diagnostic\"*\n"
+    "- Change persona: *\"you are an endocrinologist\"*\n\n"
+    "Run **Step 8** to let the agent work. You can come back here, "
+    "edit the prompt, and re-run Step 8 to compare different prompts."
 ))
-
-if _state["history"]:
-    display(Markdown("### Your Query Log"))
-    display(HTML(pd.DataFrame(_state["history"]).to_html(index=False)))
 """.strip()
+
+
+RUN_AI_AGENT = r"""
+#@title Step 8: Run the AI agent on all cases
+
+if not _state.get("case_patients"):
+    display(Markdown("**Run Steps 3-4 first.**"))
+elif _anthropic_client is None:
+    display(Markdown("**AI Agent requires an API key.** See the setup section above."))
+elif len(_state.get("human_results", [])) < _state.get("num_cases", 0):
+    display(Markdown(
+        f"**Finish Activity 1 first** (Step 5). You've classified "
+        f"{len(_state.get('human_results', []))} of {_state['num_cases']} cases."
+    ))
+else:
+    _prompt = _state.get("agent_prompt", "Classify this patient.")
+    _run_num = len(_state.get("agent_runs", [])) + 1
+    _run_results = []
+
+    display(Markdown(
+        f"## Agent Run #{_run_num}\n\n"
+        f"Running the AI agent on all {_state['num_cases']} cases...\n"
+    ))
+
+    for _case_idx, _case_patient in enumerate(_state["case_patients"]):
+        _agent_pid = _case_patient["_patient_id"]
+        _agent_label = f"{_case_patient['Name']} (Age {_case_patient['Age']}, {_case_patient['Gender']})"
+
+        display(Markdown(f"---\n### Case {_case_idx+1}: {_agent_label}"))
+
+        _agent_question = (
+            f"Review patient {_agent_pid} ({_agent_label}). "
+            "Classify as Type 1 diabetes, Type 2 diabetes, or no diabetes. "
+            "Use the FHIR query tools. Cite specific findings."
+        )
+        _agent_system = (
+            "You are a clinical data assistant querying a FHIR server with synthetic "
+            "patient data. You work as an agent: query one tool at a time, reason about "
+            "the result, then decide your next step.\n\n"
+            "CLASSIFICATION: Type 1 diabetes / Type 2 diabetes / No diabetes\n\n"
+            "The patient pool includes metabolic syndrome patients who do NOT have "
+            "diabetes. Key signals: normal C-peptide (1.1–4.4 ng/mL), no diabetes "
+            "medications, normal HbA1c (< 6.5%) = No diabetes.\n\n"
+            "After EACH tool result, state your current assessment and next step.\n"
+            "STOP when confident. Be concise.\n\n"
+            "STUDENT PROMPT (follow this guidance):\n" + _prompt
+        )
+
+        _agent_messages = [{"role": "user", "content": _agent_question}]
+        _agent_tool_log = []
+        _final_text = "(max steps reached)"
+
+        for _step in range(1, 9):
+            _resp = _anthropic_client.messages.create(
+                model=MODEL, max_tokens=4096, system=_agent_system,
+                messages=_agent_messages, tools=CLAUDE_TOOLS,
+            )
+            _tblocks = [b for b in _resp.content if b.type == "tool_use"]
+            _text_blocks = [b.text for b in _resp.content if b.type == "text" and b.text.strip()]
+
+            if not _tblocks:
+                _final_text = "".join(b.text for b in _resp.content if hasattr(b, "text"))
+                break
+
+            for _reasoning in _text_blocks:
+                display(Markdown(f"> {_reasoning.replace(chr(10), chr(10) + '> ')}"))
+
+            _acontent = []
+            for _b in _resp.content:
+                if _b.type == "text":
+                    _acontent.append({"type": "text", "text": _b.text})
+                elif _b.type == "tool_use":
+                    _acontent.append({"type": "tool_use", "id": _b.id, "name": _b.name, "input": _b.input})
+            _agent_messages.append({"role": "assistant", "content": _acontent})
+
+            _tool_results = []
+            for _tb in _tblocks:
+                _fhir_display = _tool_to_fhir_display(_tb.name, _tb.input)
+                _tr = _tool_runner(_tb.name, _tb.input)
+                _result_summary = _summarize_result(_tb.name, _tb.input, _tr)
+                _human_label = _tool_to_human_label(_tb.name, _tb.input)
+                _agent_tool_log.append({"step": _step, "action": _human_label, "fhir": _fhir_display, "result": _result_summary})
+                display(Markdown(f"**Step {_step}: {_human_label}** → {_result_summary}"))
+                _tool_results.append({
+                    "type": "tool_result", "tool_use_id": _tb.id,
+                    "content": json.dumps(_tr, default=str),
+                })
+            _agent_messages.append({"role": "user", "content": _tool_results})
+
+        # Extract classification
+        _agent_classification = "Unclear"
+        _fl = _final_text.lower()
+        if "no diabetes" in _fl:
+            _agent_classification = "No diabetes"
+        elif "type 1" in _fl:
+            _agent_classification = "Type 1"
+        elif "type 2" in _fl:
+            _agent_classification = "Type 2"
+
+        _correct_answer = _get_ground_truth(_agent_pid)
+        _is_correct = (_agent_classification == _correct_answer)
+
+        _run_results.append({
+            "case_num": _case_idx + 1,
+            "patient_id": _agent_pid,
+            "patient_label": _agent_label,
+            "classification": _agent_classification,
+            "correct_answer": _correct_answer,
+            "correct": _is_correct,
+            "queries_used": len(_agent_tool_log),
+        })
+
+        _mark = "✓" if _is_correct else "✗"
+        display(Markdown(
+            f"**Agent's answer:** {_agent_classification} {_mark} "
+            f"(correct: {_correct_answer}) — {len(_agent_tool_log)} queries"
+        ))
+
+        # Reset tool log for next case
+        _agent_tool_log = []
+
+    # Record this run
+    _num_correct = sum(1 for r in _run_results if r["correct"])
+    _pct = 100 * _num_correct / len(_run_results)
+    _total_q = sum(r["queries_used"] for r in _run_results)
+    _avg_q = _total_q / len(_run_results)
+
+    _state["agent_runs"].append({
+        "run_num": _run_num,
+        "prompt_excerpt": _prompt[:80] + ("..." if len(_prompt) > 80 else ""),
+        "results": _run_results,
+        "num_correct": _num_correct,
+        "pct_correct": _pct,
+        "total_queries": _total_q,
+        "avg_queries": _avg_q,
+    })
+
+    # Show all runs
+    display(Markdown("---\n## Agent Run History\n"))
+    _run_rows = ""
+    for _run in _state["agent_runs"]:
+        _run_rows += (
+            f"| {_run['run_num']} | {_run['prompt_excerpt']} | "
+            f"{_run['num_correct']}/{len(_run['results'])} ({_run['pct_correct']:.0f}%) | "
+            f"{_run['avg_queries']:.1f} |\n"
+        )
+    display(Markdown(
+        "| Run | Prompt | Accuracy | Avg Queries |\n"
+        "|-----|--------|----------|-------------|\n"
+        f"{_run_rows}\n"
+        "To try a different prompt, go back to **Step 7**, edit it, and re-run this cell."
+    ))
+""".strip()
+
+
+SUMMARY = r"""
+#@title Step 9: Summary
+
+if not _state.get("human_results"):
+    display(Markdown("**Complete Activity 1 first.**"))
+elif not _state.get("agent_runs"):
+    display(Markdown("**Complete Activity 2 first** (at least one agent run)."))
+else:
+    _h = _state["human_results"]
+    _h_correct = sum(1 for r in _h if r["correct"])
+    _h_pct = 100 * _h_correct / len(_h)
+    _h_avg = sum(r["queries_used"] for r in _h) / len(_h)
+
+    # Summary table: student + all agent runs
+    _summary_rows = (
+        f"| You (Activity 1) | — | "
+        f"{_h_correct}/{len(_h)} ({_h_pct:.0f}%) | {_h_avg:.1f} |\n"
+    )
+    for _run in _state["agent_runs"]:
+        _summary_rows += (
+            f"| Agent Run {_run['run_num']} | {_run['prompt_excerpt']} | "
+            f"{_run['num_correct']}/{len(_run['results'])} ({_run['pct_correct']:.0f}%) | "
+            f"{_run['avg_queries']:.1f} |\n"
+        )
+
+    display(Markdown(
+        "## Final Summary\n\n"
+        "| Who | Prompt | Accuracy | Avg Queries |\n"
+        "|-----|--------|----------|-------------|\n"
+        f"{_summary_rows}\n"
+    ))
+
+    # Per-case detail table
+    _detail_rows = ""
+    for i, _hr in enumerate(_h):
+        _you_mark = "✓" if _hr["correct"] else "✗"
+        _row = (
+            f"| {_hr['case_num']} | {_hr['patient_label']} | {_hr['correct_answer']} | "
+            f"{_hr['classification']} {_you_mark} | {_hr['queries_used']} |"
+        )
+        for _run in _state["agent_runs"]:
+            if i < len(_run["results"]):
+                _ar = _run["results"][i]
+                _ai_mark = "✓" if _ar["correct"] else "✗"
+                _row += f" {_ar['classification']} {_ai_mark} | {_ar['queries_used']} |"
+            else:
+                _row += " — | — |"
+        _detail_rows += _row + "\n"
+
+    # Build header
+    _header = "| Case | Patient | Correct | You | Queries |"
+    _separator = "|------|---------|---------|-----|---------|"
+    for _run in _state["agent_runs"]:
+        _header += f" Run {_run['run_num']} | Queries |"
+        _separator += "------|---------|"
+
+    display(Markdown(
+        "### Per-Case Detail\n\n"
+        f"{_header}\n{_separator}\n{_detail_rows}"
+    ))
+
+    display(Markdown(
+        "### Discussion Questions\n\n"
+        "1. **Accuracy vs efficiency:** Who was more accurate? Who used fewer queries?\n"
+        "2. **Prompt impact:** How did changing your prompt affect the AI's accuracy "
+        "and query count? Which prompt worked best?\n"
+        "3. **Strategy differences:** Did you and the AI query the same resources? "
+        "In what order?\n"
+        "4. **The 'no diabetes' trap:** Which patients were hardest? What evidence "
+        "distinguishes metabolic syndrome from actual diabetes?\n"
+        "5. **FHIR resource value:** Which resource type mattered most?\n"
+        "6. **The agent loop:** *observe → decide → act → update → repeat.* "
+        "What makes the 'when to stop' decision hard?\n"
+    ))
+""".strip()
+
+
+# ===================================================================
+# Markdown cell constants
+# ===================================================================
+
+INTRO = [
+    "# You Are the Agent: A Clinical Classification Game\n",
+    "\n",
+    "This is a game designed to teach you two things: **how AI agents work** and "
+    "**how FHIR queries access clinical data**.\n",
+    "\n",
+    "You'll classify synthetic patients as Type 1 diabetes, Type 2 diabetes, or "
+    "no diabetes. Your tools are **FHIR queries** — structured requests to an "
+    "electronic health record server.\n",
+    "\n",
+    "**The game has two activities:**\n",
+    "\n",
+    "**Activity 1 — You are the agent.** You manually choose which FHIR queries to "
+    "run and classify each patient yourself. It's a quiz: you get immediate feedback "
+    "after each classification.\n",
+    "\n",
+    "**Activity 2 — You are the prompt engineer.** You write a prompt that tells an "
+    "AI agent how to approach the same cases. The AI runs autonomously using your "
+    "instructions. You can iterate on your prompt and compare results.\n",
+    "\n",
+    "Both activities track your **accuracy** (% correct) and **number of queries "
+    "used**. In real medicine, there's no reason to limit evidence — you'd look at "
+    "everything. But in agent design, every query costs time, tokens, and money. "
+    "Tracking query count teaches you to think about the tradeoffs that matter when "
+    "building real AI agents.\n",
+    "\n",
+    "An AI agent works in a loop:\n",
+    "\n",
+    "1. **Observe** — what evidence do I have so far?\n",
+    "2. **Decide** — what FHIR query would be most informative next?\n",
+    "3. **Act** — execute the query\n",
+    "4. **Update** — add the new evidence to my assessment\n",
+    "5. **Repeat** or **answer** when confident\n",
+    "\n",
+    "> **No coding required.** Every step uses dropdown menus and Run buttons.\n",
+]
+
+WHAT_YOULL_PRACTICE = [
+    "## What You'll Learn\n",
+    "\n",
+    "- How the **agent loop** works: observe → decide → act → update → repeat\n",
+    "- How clinical questions map to **FHIR queries** against structured data\n",
+    "- Which **FHIR resources** (Patient, Condition, Observation, MedicationRequest) "
+    "carry the most signal for a given question\n",
+    "- How **prompt engineering** shapes an AI agent's query strategy\n",
+    "- The tradeoffs in agent design: accuracy vs. cost (query count)\n",
+]
+
+CLINICAL_SCENARIO = [
+    "## The Clinical Scenario\n",
+    "\n",
+    "**Setting:** You are an informatics fellow reviewing a cohort of working-age adults "
+    "(age ≤ 50) with a diabetes diagnosis in a synthetic FHIR server.\n",
+    "\n",
+    "**Problem:** Not every patient with metabolic risk factors has diabetes. The pool "
+    "includes patients with diabetes (Type 1 and Type 2) *and* patients with metabolic "
+    "syndrome who do not have diabetes. Accurate classification matters for management.\n",
+    "\n",
+    "**Your task:** Query the FHIR server and decide:\n",
+    "- **Type 1 diabetes** — evidence supports autoimmune diabetes\n",
+    "- **Type 2 diabetes** — evidence supports insulin resistance pattern\n",
+    "- **No diabetes** — metabolic risk factors but no actual diabetes\n",
+    "\n",
+    "The game tracks both **accuracy** and **query count**.\n",
+    "\n",
+    "**Key evidence to look for:**\n",
+    "- **C-peptide** (low → T1, normal/high → T2) — the most direct differentiator (`Observation` LOINC `1986-9`)\n",
+    "- **Treatment regimen** (insulin-only vs. oral agents) — strong T1/T2 signal (`MedicationRequest`)\n",
+    "- **BMI** (lower → T1, higher → T2, not definitive) — context, not proof (`Observation` LOINC `39156-5`)\n",
+    "- **HbA1c** (glycemic control) — tells you severity, not type (`Observation` LOINC `4548-4`)\n",
+    "- **eGFR** (kidney function) — complications and CKD staging (`Observation` LOINC `33914-3`)\n",
+    "- **Diagnosis context** — existing conditions and comorbidities (`Condition`)\n",
+]
+
+ABOUT_THE_DATA = [
+    "## About the Data: A Purpose-Built Synthetic Cohort\n",
+    "\n",
+    "The patient data in this exercise was created by **Joel Saltz** specifically for this "
+    "course. It is a cohort of **1,027 synthetic patients** spanning six canonical phenotypes "
+    "along the diabetes–CKD spectrum:\n",
+    "\n",
+    "| # | Phenotype | Key Features |\n",
+    "|---|-----------|-------------|\n",
+    "| 1 | **Metabolic syndrome** | **No diabetes**, no CKD — high BMI, borderline HbA1c, normal C-peptide, no diabetes meds |\n",
+    "| 2 | Early Type 2 diabetes | No CKD |\n",
+    "| 3 | Type 2 diabetes with obesity | Early CKD |\n",
+    "| 4 | Advanced Type 2 diabetes | Moderate CKD |\n",
+    "| 5 | Type 1 diabetes | Early nephropathy |\n",
+    "| 6 | Type 1 diabetes, poor control | With CKD |\n",
+    "\n",
+    "Variables are **clinically coupled** — for example, C-peptide tracks diabetes type and "
+    "duration, HbA1c correlates with glucose via the ADAG equation, and renal chemistry is "
+    "internally consistent. Each phenotype has an age anchor and demographic variability, so "
+    "patients within a phenotype are similar but not identical.\n",
+    "\n",
+    "The data is loaded into a **FHIR R4 server**, so you query it the same way you would "
+    "query real clinical data. Synthetic data generation is a topic you may explore in a "
+    "future session.\n",
+]
+
+TOOLKIT = [
+    "## Your Toolkit: FHIR Queries as Agent Tools\n",
+    "\n",
+    "Each tool is a **FHIR query** — a structured request to a specific resource endpoint. "
+    "Choosing WHICH tool to use next is a clinical reasoning decision.\n",
+    "\n",
+    "| Tool | FHIR Query | Clinical Reasoning |\n",
+    "|------|------------|--------------------|\n",
+    "| Get demographics | `GET /Patient/{id}` | Age at onset — younger leans toward T1 |\n",
+    "| Get problem list | `GET /Condition?subject=...` | Existing diagnoses, comorbidities |\n",
+    "| Get C-peptide | `GET /Observation?code=1986-9` | **Direct T1/T2 differentiator** — low = beta-cell destruction |\n",
+    "| Get HbA1c | `GET /Observation?code=4548-4` | Glycemic control (severity, not type) |\n",
+    "| Get BMI | `GET /Observation?code=39156-5` | Insulin resistance context |\n",
+    "| Get eGFR | `GET /Observation?code=33914-3` | Kidney function / CKD staging |\n",
+    "| Get treatment regimen | `GET /MedicationRequest?subject=...` | Insulin-only vs oral agents |\n",
+    "| Get encounters | `GET /Encounter?subject=...` | Care pattern context |\n",
+    "\n",
+    "**Coding systems:** SNOMED CT for diagnoses (46635009 = T1DM, 44054006 = T2DM) · "
+    "LOINC for labs (4548-4 = HbA1c, 1986-9 = C-peptide, 39156-5 = BMI, 33914-3 = eGFR)\n",
+    "\n",
+    "> In Activity 2, the AI agent has **exactly these same tools**. The difference is "
+    "the prompt you give it.\n",
+]
+
+API_KEY_SETUP = [
+    "## Before You Start: Set Up Your API Key\n",
+    "\n",
+    "Activity 2 (Steps 7-8) uses **Claude**, an AI model, which "
+    "requires an API key. Activity 1 (where *you* are the agent) works without one, but "
+    "you'll need the key to see the AI in action.\n",
+    "\n",
+    "**How to add your API key in Colab:**\n",
+    "\n",
+    "1. Look at the **left sidebar** — below the file browser and variable icons, you'll "
+    "see a **key icon** (🔑). Click it to open the **Secrets** panel.\n",
+    "2. Click **\"Add a secret\"**\n",
+    "3. Set the name to exactly: `ANTHROPIC_API_KEY`\n",
+    "4. Paste your API key as the value\n",
+    "5. Toggle **\"Notebook access\"** to **ON**\n",
+    "\n",
+    "> **Gotcha:** You cannot edit a secret after saving it. If you need to change the key, "
+    "**delete** the secret and create a new one with the same name.\n",
+    "\n",
+    "If you don't have an API key, you can still complete Activity 1 as the human agent. "
+    "Ask your instructor if you need a key.\n",
+]
+
+ACTIVITY1_INTRO = [
+    "## Activity 1: You Are the Agent\n",
+    "\n",
+    "**Everything happens in Step 5 below.** The dropdown has two sections:\n",
+    "\n",
+    "1. **Query actions** (top) — run FHIR queries to gather evidence\n",
+    "2. **Classify actions** (bottom) — submit your answer when ready\n",
+    "\n",
+    "For each case: pick queries, run as many as you want, then select a "
+    "*Classify* option to submit your answer. You get immediate feedback — "
+    "right or wrong, no take-backs. The next case loads automatically. "
+    "Keep running the same cell for all your cases.\n",
+]
+
+INVESTIGATE_INTRO = [
+    "## Investigate and Classify\n",
+    "\n",
+    "Each time you run the cell below, you execute **one action** — either a FHIR "
+    "query or a classification. Change the **action dropdown** and click Run.\n",
+    "\n",
+    "**Query actions** show:\n",
+    "- The **FHIR request** that was made\n",
+    "- The **results** with clinical context\n",
+    "- Your **Agent Dashboard** showing collected evidence, gaps, and query log\n",
+    "\n",
+    "**Classify actions** record your answer, give immediate feedback, and load "
+    "the next case.\n",
+    "\n",
+    "> **Run this cell as many times as you want.** Each run is one turn.\n",
+    "\n",
+    "> **Note:** The problem list has been modified so that diabetes-specific diagnoses "
+    "don't give away the answer. Use labs and medications to build your case.\n",
+]
+
+ACTIVITY2_INTRO = [
+    "## Activity 2: Prompt the AI Agent\n",
+    "\n",
+    "Now write a prompt that tells an AI agent how to classify the same patients. "
+    "The agent has the same FHIR tools you used. You can run it, edit your "
+    "prompt, and run again to see how different instructions change accuracy "
+    "and query count.\n",
+]
+
+WRAPUP = [
+    "## Wrap-Up\n",
+    "\n",
+    "You've experienced the core **agent loop** from two perspectives:\n",
+    "\n",
+    "**Activity 1** — you *were* the agent, choosing queries, weighing evidence, and "
+    "deciding when you had enough to classify.\n",
+    "\n",
+    "**Activity 2** — you were the *prompt engineer*, writing instructions that shaped "
+    "how an AI agent approached the same task.\n",
+    "\n",
+    "```\n",
+    "while not confident_enough:\n",
+    "    observe current evidence\n",
+    "    choose next FHIR query (GET /Resource?parameters...)\n",
+    "    execute the query\n",
+    "    update assessment\n",
+    "```\n",
+    "\n",
+    "The game tracked accuracy and query count — not because limiting queries is "
+    "good medicine, but because it teaches you to think about the tradeoffs that "
+    "matter in real agent design: cost, latency, and token usage.\n",
+    "\n",
+    "**Key takeaways:**\n",
+    "- The agent loop is the same whether a human or AI is running it\n",
+    "- FHIR resource choice matters — some queries are more informative than others\n",
+    "- Prompt engineering directly affects agent behavior and performance\n",
+    "- 'When to stop' is the hardest design decision in any agent\n",
+]
 
 
 # ===================================================================
@@ -1007,231 +1429,30 @@ if _state["history"]:
 # ===================================================================
 
 cells = [
-    md_cell([
-        "# You Are the Agent\n",
-        "\n",
-        "## A Clinical Decision-Making Exercise Using FHIR\n",
-        "\n",
-        "In this exercise, **you play the role of a clinical AI agent.** You have a clinical ",
-        "question to answer about a patient. Your tools are **FHIR queries** — structured ",
-        "requests to an electronic health record server.\n",
-        "\n",
-        "An AI agent works in a loop:\n",
-        "\n",
-        "1. **Observe** — what evidence do I have so far?\n",
-        "2. **Decide** — what FHIR query would be most informative next?\n",
-        "3. **Act** — execute the query\n",
-        "4. **Update** — add the new evidence to my assessment\n",
-        "5. **Repeat** or **answer** when confident\n",
-        "\n",
-        "This is exactly how real LLM-based agents work in production — from clinical decision ",
-        "support to automated chart review. By doing it manually first, you develop intuition ",
-        "for what makes an agent good or bad at clinical reasoning: which queries matter, when ",
-        "to stop, and how to weigh conflicting evidence. After your manual run, you'll watch an ",
-        "AI agent tackle the same case and compare strategies.\n",
-        "\n",
-        "> **No coding required.** Every step uses dropdown menus and Run buttons. ",
-        "After each query, you'll see the FHIR request that was made and the results.\n",
-    ]),
+    md_cell(INTRO),
+    md_cell(WHAT_YOULL_PRACTICE),
+    md_cell(CLINICAL_SCENARIO),
+    md_cell(ABOUT_THE_DATA),
+    md_cell(TOOLKIT),
+    md_cell(API_KEY_SETUP),
 
-    md_cell([
-        "## What You'll Practice\n",
-        "\n",
-        "- Describe the **agent loop** (observe → decide → act → update → repeat)\n",
-        "- Choose which **FHIR resource** to query based on missing evidence\n",
-        "- Understand how clinical questions map to **structured FHIR queries**\n",
-        "- Decide when evidence is **sufficient** to answer\n",
-        "- Compare your query strategy with an AI agent's approach\n",
-    ]),
+    form_cell(SETUP),              # Step 1
+    form_cell(TOOLS),              # Step 2
+    form_cell(BUILD_CANDIDATES),   # Step 3
 
-    md_cell([
-        "## The Clinical Scenario\n",
-        "\n",
-        "**Setting:** You are an informatics fellow reviewing a cohort of working-age adults ",
-        "(age ≤ 50) with a diabetes diagnosis in a synthetic FHIR server.\n",
-        "\n",
-        "**Problem:** Some patients may have been labeled with the wrong diabetes type. ",
-        "Type 1 and Type 2 diabetes require different management, so accurate classification matters.\n",
-        "\n",
-        "**Your task:** Query the FHIR server and decide:\n",
-        "- **Likely Type 1** — evidence supports autoimmune diabetes\n",
-        "- **Likely Type 2** — evidence supports insulin resistance pattern\n",
-        "- **Unclear** — evidence is insufficient or conflicting\n",
-        "\n",
-        "**Key evidence to look for:**\n",
-        "- **C-peptide** (low → T1, normal/high → T2) — the most direct differentiator (`Observation` LOINC `1986-9`)\n",
-        "- **Treatment regimen** (insulin-only vs. oral agents) — strong T1/T2 signal (`MedicationRequest`)\n",
-        "- **BMI** (lower → T1, higher → T2, not definitive) — context, not proof (`Observation` LOINC `39156-5`)\n",
-        "- **HbA1c** (glycemic control) — tells you severity, not type (`Observation` LOINC `4548-4`)\n",
-        "- **eGFR** (kidney function) — complications and CKD staging (`Observation` LOINC `33914-3`)\n",
-        "- **Diagnosis context** — existing conditions and comorbidities (`Condition`)\n",
-    ]),
+    md_cell(ACTIVITY1_INTRO),
+    form_cell(CHOOSE_NUM_CASES),   # Step 4
+    md_cell(INVESTIGATE_INTRO),
+    form_cell(INVESTIGATE),        # Step 5
+    form_cell(ACTIVITY1_RESULTS),  # Step 6
 
-    md_cell([
-        "## About the Data: A Purpose-Built Synthetic Cohort\n",
-        "\n",
-        "The patient data in this exercise was created by **Joel Saltz** specifically for this ",
-        "course. It is a cohort of **1,027 synthetic patients** spanning six canonical phenotypes ",
-        "along the diabetes–CKD spectrum:\n",
-        "\n",
-        "| # | Phenotype | Key Features |\n",
-        "|---|-----------|-------------|\n",
-        "| 1 | Metabolic syndrome | No diabetes, no CKD |\n",
-        "| 2 | Early Type 2 diabetes | No CKD |\n",
-        "| 3 | Type 2 diabetes with obesity | Early CKD |\n",
-        "| 4 | Advanced Type 2 diabetes | Moderate CKD |\n",
-        "| 5 | Type 1 diabetes | Early nephropathy |\n",
-        "| 6 | Type 1 diabetes, poor control | With CKD |\n",
-        "\n",
-        "Variables are **clinically coupled** — for example, C-peptide tracks diabetes type and ",
-        "duration, HbA1c correlates with glucose via the ADAG equation, and renal chemistry is ",
-        "internally consistent. Each phenotype has an age anchor and demographic variability, so ",
-        "patients within a phenotype are similar but not identical.\n",
-        "\n",
-        "The data is loaded into a **FHIR R4 server**, so you query it the same way you would ",
-        "query real clinical data. Synthetic data generation is a topic you may explore in a ",
-        "future session.\n",
-    ]),
+    md_cell(ACTIVITY2_INTRO),
+    form_cell(PROMPT_EDITOR),      # Step 7
+    form_cell(RUN_AI_AGENT),       # Step 8
 
-    md_cell([
-        "## Your Toolkit: FHIR Queries as Agent Tools\n",
-        "\n",
-        "Each tool is a **FHIR query** — a structured request to a specific resource endpoint. ",
-        "Choosing WHICH tool to use next is a clinical reasoning decision.\n",
-        "\n",
-        "| Tool | FHIR Query | Clinical Reasoning |\n",
-        "|------|------------|--------------------|\n",
-        "| Get demographics | `GET /Patient/{id}` | Age at onset — younger leans toward T1 |\n",
-        "| Get problem list | `GET /Condition?subject=...` | Existing diagnoses, comorbidities |\n",
-        "| Get C-peptide | `GET /Observation?code=1986-9` | **Direct T1/T2 differentiator** — low = beta-cell destruction |\n",
-        "| Get HbA1c | `GET /Observation?code=4548-4` | Glycemic control (severity, not type) |\n",
-        "| Get BMI | `GET /Observation?code=39156-5` | Insulin resistance context |\n",
-        "| Get eGFR | `GET /Observation?code=33914-3` | Kidney function / CKD staging |\n",
-        "| Get treatment regimen | `GET /MedicationRequest?subject=...` | Insulin-only vs oral agents |\n",
-        "| Get encounters | `GET /Encounter?subject=...` | Care pattern context |\n",
-        "\n",
-        "**Coding systems:** SNOMED CT for diagnoses (46635009 = T1DM, 44054006 = T2DM) · ",
-        "LOINC for labs (4548-4 = HbA1c, 1986-9 = C-peptide, 39156-5 = BMI, 33914-3 = eGFR)\n",
-        "\n",
-        "> The AI agent has **exactly these same tools**. The difference isn't the tools — ",
-        "it's the *strategy* for choosing which to use and when to stop.\n",
-    ]),
+    form_cell(SUMMARY),            # Step 9
 
-    md_cell([
-        "## Before You Start: Set Up Your API Key\n",
-        "\n",
-        "Steps 6 (AI Coach) and 8 (AI Agent comparison) use **Claude**, an AI model, which ",
-        "requires an API key. Steps 1–7 (where *you* are the agent) work without one, but ",
-        "you'll need the key to see the AI in action.\n",
-        "\n",
-        "**How to add your API key in Colab:**\n",
-        "\n",
-        "1. Look at the **left sidebar** — below the file browser and variable icons, you'll ",
-        "see a **key icon** (🔑). Click it to open the **Secrets** panel.\n",
-        "2. Click **\"Add a secret\"**\n",
-        "3. Set the name to exactly: `ANTHROPIC_API_KEY`\n",
-        "4. Paste your API key as the value\n",
-        "5. Toggle **\"Notebook access\"** to **ON**\n",
-        "\n",
-        "> **Gotcha:** You cannot edit a secret after saving it. If you need to change the key, ",
-        "**delete** the secret and create a new one with the same name.\n",
-        "\n",
-        "If you don't have an API key, you can still complete Steps 1–7 as the human agent. ",
-        "Ask your instructor if you need a key.\n",
-    ]),
-
-    form_cell(SETUP),
-    form_cell(TOOLS),
-    form_cell(BUILD_CANDIDATES),
-
-    md_cell([
-        "## Time to Be the Agent\n",
-        "\n",
-        "1. **Select a case** — pick a patient number below\n",
-        "2. **Gather evidence** — choose a FHIR query from the dropdown, click Run, review the results\n",
-        "3. **Track your confidence** — after each query, update the assessment dropdown\n",
-        "4. **Decide when to stop** — check \"Ready to answer\" when you have enough evidence\n",
-        "5. **Ask the AI coach** — it suggests one next FHIR query (optional)\n",
-        "6. **Record your answer** — classify the patient, citing specific FHIR findings\n",
-        "7. **Compare with the AI agent** — watch it query the same patient and track its confidence\n",
-        "\n",
-        "> **Think before you query.** An agent that runs every available tool wastes time. ",
-        "Pick the query most likely to change your assessment. The goal is reaching ",
-        "confidence efficiently, not exhausting every option.\n",
-    ]),
-
-    form_cell(SELECT_CASE),
-
-    md_cell([
-        "## Gather Evidence\n",
-        "\n",
-        "Each time you run the cell below, you execute **one FHIR query** — one agent turn. ",
-        "Change the **action dropdown** to select which query to run, then click Run.\n",
-        "\n",
-        "After each query you'll see:\n",
-        "- The **FHIR request** that was made\n",
-        "- The **results** with clinical context\n",
-        "- Your **Agent Dashboard** showing collected evidence, gaps, and query log\n",
-        "\n",
-        "**Confidence tracking:** After each query, update the **assessment dropdown** to ",
-        "reflect your current thinking. When you feel you have enough evidence, check ",
-        "**\"Ready to answer\"** to proceed to Step 7.\n",
-        "\n",
-        "> **Run this cell as many times as you want.** Each run is one turn.\n",
-    ]),
-
-    form_cell(GATHER_EVIDENCE),
-
-    md_cell([
-        "## Ask the AI Coach\n",
-        "\n",
-        "The AI coach sees the same evidence state you see and suggests one next FHIR query. ",
-        "You're still in control of what to actually run.\n",
-    ]),
-
-    form_cell(LLM_COACH),
-
-    md_cell([
-        "## Record Your Answer\n",
-        "\n",
-        "When you've gathered enough evidence, record your classification below. ",
-        "**Cite specific FHIR findings** — e.g., \"C-peptide was 0.3 ng/mL (Observation), ",
-        "patient is on insulin only (MedicationRequest).\"\n",
-    ]),
-
-    form_cell(RECORD_ANSWER),
-
-    md_cell([
-        "## Watch the AI Agent\n",
-        "\n",
-        "The AI agent receives the same clinical question and the same FHIR tools. ",
-        "Watch which queries it chooses, in what order, and **when it decides to stop**. ",
-        "After each query, the agent states its reasoning and confidence level — ",
-        "it stops when it reaches \"Confident\" rather than running every tool.\n",
-    ]),
-
-    form_cell(LLM_AGENT),
-
-    form_cell(DEBRIEF),
-
-    md_cell([
-        "## Wrap-Up\n",
-        "\n",
-        "You've experienced the core **agent loop** from the inside:\n",
-        "\n",
-        "```\n",
-        "while not confident_enough:\n",
-        "    observe current evidence\n",
-        "    choose next FHIR query (GET /Resource?parameters...)\n",
-        "    execute the query\n",
-        "    update assessment\n",
-        "```\n",
-        "\n",
-        "This is exactly what an AI agent does — the only difference is who chooses the next query.\n",
-        "\n",
-        "**To investigate another patient:** Go back to Step 4, change the case number, ",
-        "and run through the exercise again.\n",
-    ]),
+    md_cell(WRAPUP),
 ]
 
 notebook = build_notebook(cells)

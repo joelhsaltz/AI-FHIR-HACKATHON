@@ -2,6 +2,14 @@
 """
 Quick smoke test: extract code cells from the demo notebook and run them
 in order, mocking interactive #@param values and skipping LLM-dependent cells.
+
+Two-activity notebook structure (9 steps):
+  Steps 1-3: Setup (FHIR connection, tools, candidates)
+  Step 4: Choose number of cases
+  Step 5: Activity 1 — investigate and classify (combined cell, multi-case loop)
+  Step 6: Activity 1 results
+  Steps 7-8: Activity 2 (prompt editor, AI agent — skipped, needs LLM)
+  Step 9: Summary (skipped, needs agent_runs populated)
 """
 
 import json
@@ -37,45 +45,32 @@ def run_cell(code, namespace, label, timeout_sec=120):
         signal.alarm(0)
 
 
-# New dropdown value for the 8-option action param
+# The combined action dropdown
 ACTION_PARAM_OLD = (
     'action = "Get demographics" #@param '
     '["Get demographics", "Get problem list", "Get C-peptide", '
-    '"Get HbA1c", "Get BMI", "Get eGFR", "Get treatment regimen", "Get encounters"]'
+    '"Get HbA1c", "Get BMI", "Get eGFR", "Get treatment regimen", '
+    '"Get encounters", "— CLASSIFY —", '
+    '"Classify: Type 1", "Classify: Type 2", "Classify: No diabetes"]'
 )
-ASSESSMENT_PARAM_OLD = (
-    'assessment = "No opinion yet" #@param '
-    '["No opinion yet", "Slight lean toward Type 1", "Slight lean toward Type 2", '
-    '"Strongly leaning Type 1", "Strongly leaning Type 2", '
-    '"Confident Type 1", "Confident Type 2", "Unclear — conflicting evidence"]'
-)
-READY_PARAM_OLD = 'ready_to_answer = False #@param {type:"boolean"}'
 
 
 def strip_params(src, action_value="Get demographics"):
     """Replace #@param annotations with concrete values."""
     processed = src
     processed = re.sub(r"#@title .+\n?", "", processed)
-    # Action dropdown
+    # Action dropdown (Step 5 — combined investigate and classify)
     processed = processed.replace(ACTION_PARAM_OLD, f'action = "{action_value}"')
-    # Assessment dropdown
-    processed = processed.replace(ASSESSMENT_PARAM_OLD, 'assessment = "No opinion yet"')
-    # Ready checkbox
-    processed = processed.replace(READY_PARAM_OLD, 'ready_to_answer = False')
-    # Case number
+    # Num cases (Step 4)
     processed = processed.replace(
-        'case_number = 1 #@param {type:"integer"}',
-        'case_number = 1',
+        'num_cases = 3 #@param {type:"integer"}',
+        'num_cases = 3',
     )
-    # Classification
-    processed = processed.replace(
-        'classification = "Likely Type 1" #@param ["Likely Type 1", "Likely Type 2", "Unclear / needs more review"]',
-        'classification = "Likely Type 1"',
-    )
-    # Rationale
-    processed = processed.replace(
-        'rationale = "" #@param {type:"string"}',
-        'rationale = "Test rationale: low C-peptide, insulin-only"',
+    # Agent prompt editor (Step 7)
+    processed = re.sub(
+        r'agent_prompt = ".*?" #@param \{type:"string"\}',
+        'agent_prompt = "Test agent prompt"',
+        processed,
     )
     return processed
 
@@ -98,47 +93,41 @@ def main():
 
     results = []
     for idx, (cell_i, title, src) in enumerate(code_cells):
-        # Skip LLM-dependent cells (coach, agent, debrief with comparison)
-        if any(skip in title.lower() for skip in ["ai coach", "ai agent", "watch the ai"]):
+        # Skip LLM-dependent cells
+        if any(skip in title.lower() for skip in ["run the ai agent", "summary"]):
             print(f"  SKIP (needs LLM): {title}")
             results.append(("SKIP", title))
+            continue
+
+        # For the combined investigate-and-classify cell, run the full multi-case flow
+        if "investigate and classify" in title.lower():
+            # First run: default action (Get demographics) for case 1
+            processed = strip_params(src)
+            ok = run_cell(processed, ns, f"{title} (Get demographics)", timeout_sec=180)
+            results.append(("PASS" if ok else "FAIL", f"{title}: Get demographics"))
+
+            # Test additional query tools for case 1
+            for tool_action in ["Get C-peptide", "Get HbA1c", "Get BMI", "Get eGFR",
+                                "Get treatment regimen", "Get encounters"]:
+                tool_src = strip_params(src, action_value=tool_action)
+                ok_tool = run_cell(tool_src, ns, f"Investigate: {tool_action}", timeout_sec=60)
+                results.append(("PASS" if ok_tool else "FAIL", f"Investigate: {tool_action}"))
+
+            # Classify all cases in sequence using the combined cell
+            num_cases = ns.get("_state", {}).get("num_cases", 3)
+            for case_i in range(num_cases):
+                pid = ns["_state"]["patient_id"]
+                if pid:
+                    gt = ns["_get_ground_truth"](pid)
+                    classify_src = strip_params(src, action_value=f"Classify: {gt}")
+                    label = f"Classify case {case_i+1} (answer={gt})"
+                    ok = run_cell(classify_src, ns, label, timeout_sec=60)
+                    results.append(("PASS" if ok else "FAIL", label))
             continue
 
         processed = strip_params(src)
         ok = run_cell(processed, ns, title, timeout_sec=180)
         results.append(("PASS" if ok else "FAIL", title))
-
-        # After "Gather evidence" step, test individual tools
-        if "gather evidence" in title.lower():
-            # Test Get C-peptide (individual lab)
-            cp_src = strip_params(src, action_value="Get C-peptide")
-            ok_cp = run_cell(cp_src, ns, "Gather evidence: Get C-peptide", timeout_sec=60)
-            results.append(("PASS" if ok_cp else "FAIL", "Gather evidence: C-peptide"))
-
-            # Test Get HbA1c
-            hba1c_src = strip_params(src, action_value="Get HbA1c")
-            ok_hba1c = run_cell(hba1c_src, ns, "Gather evidence: Get HbA1c", timeout_sec=60)
-            results.append(("PASS" if ok_hba1c else "FAIL", "Gather evidence: HbA1c"))
-
-            # Test Get BMI
-            bmi_src = strip_params(src, action_value="Get BMI")
-            ok_bmi = run_cell(bmi_src, ns, "Gather evidence: Get BMI", timeout_sec=60)
-            results.append(("PASS" if ok_bmi else "FAIL", "Gather evidence: BMI"))
-
-            # Test Get eGFR
-            egfr_src = strip_params(src, action_value="Get eGFR")
-            ok_egfr = run_cell(egfr_src, ns, "Gather evidence: Get eGFR", timeout_sec=60)
-            results.append(("PASS" if ok_egfr else "FAIL", "Gather evidence: eGFR"))
-
-            # Test Get treatment regimen
-            med_src = strip_params(src, action_value="Get treatment regimen")
-            ok_med = run_cell(med_src, ns, "Gather evidence: Get treatment regimen", timeout_sec=60)
-            results.append(("PASS" if ok_med else "FAIL", "Gather evidence: treatment regimen"))
-
-            # Test Get encounters
-            enc_src = strip_params(src, action_value="Get encounters")
-            ok_enc = run_cell(enc_src, ns, "Gather evidence: Get encounters", timeout_sec=60)
-            results.append(("PASS" if ok_enc else "FAIL", "Gather evidence: encounters"))
 
     print("\n" + "=" * 60)
     print("SUMMARY")

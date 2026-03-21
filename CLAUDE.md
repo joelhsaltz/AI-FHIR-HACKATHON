@@ -5,8 +5,9 @@
 FHIR + AI Hackathon for BMI 512 (Clinical Informatics and AI) at Stony Brook
 University. Three-session educational hackathon teaching FHIR data querying and
 AI agent patterns with Claude. The redesign shifts from code-explanation to
-"You Are the Agent" pedagogy: students act as the agent via menus, then compare
-to how the LLM does it (Human → Hybrid → LLM progression).
+"You Are the Agent" pedagogy with two activities: Activity 1 (student acts as
+agent — manual FHIR queries + immediate-feedback classification quiz) and
+Activity 2 (student writes prompts for an AI agent — repeatable, scored).
 
 ## Repository Layout
 
@@ -173,6 +174,8 @@ no incremental feedback, hangs on `input()` calls). Instead:
 mocks, no "it should work." This project produces educational materials where the
 UI and user experience are the product.
 
+**Use API calls to verify the notebook works. If you do not have the API key, STOP and ask the user.  Store this key in a `.env` file in the root of the project.**
+
 ### Two-stage verification
 
 1. **Automated Colab testing (Claude's job):** Use the colab-notebook-tools
@@ -234,6 +237,35 @@ optional and not deferrable. The test sequence is:
 
 Skipping Colab testing because "the code looks correct" or "it passed locally"
 is never acceptable.
+
+## Change-Specific Verification — Hard Rule
+
+After taking Colab screenshots, Claude MUST verify each specific change from
+the implementation plan/task is visually confirmed in at least one screenshot.
+
+**Process:**
+1. Before reviewing screenshots, write out a **verification checklist** — every
+   user-visible change that was made (new UI elements, removed columns, updated
+   text, new dropdowns, new output sections, etc.)
+2. Review each screenshot and check off items that are confirmed visible
+3. If ANY item is not visible in any screenshot:
+   - Do NOT declare verification complete
+   - Do NOT say "cannot verify from these positions" and move on
+   - **First:** Re-run the screenshot script with `--num-sections` increased
+     (e.g., 10, 15, 20) until the missing item is captured. This is cheap and
+     fast — always try it before falling back to flagging.
+   - **Only if screenshots physically cannot capture the item** (e.g., it
+     requires interactive input that Run All doesn't provide): explicitly tell
+     the user which items need manual verification and why.
+4. Only declare verification complete when every checklist item is either
+   confirmed in a screenshot or explicitly flagged with a concrete reason
+   why automated capture is impossible (not just "it fell between positions")
+
+**The anti-pattern this prevents:** Taking 5 viewport screenshots, eyeballing
+them, and saying "looks clean" without checking whether every change is
+actually visible. If you made 8 changes and can only see 5 of them in
+screenshots, verification is NOT complete — increase `--num-sections` and
+re-run until all items are captured.
 
 ## TO-DO: Future Improvements
 
