@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0",
+  "cohort_name": "ckd_progression_risk_stratification",
+  "description": "Candidate pool for CKD progression risk scenario. Mix of clear refer, clear monitor, ambiguous, and data-gap cases. Designed to require 4-5 FHIR queries per patient for defensible classification.",
+  "jobs": [
+    {"phenotype_id": "advanced_t2d_ckd3b", "n": 3, "role": "clear_refer"},
+    {"phenotype_id": "t1d_poor_control_ckd3a", "n": 2, "role": "clear_refer"},
+    {"phenotype_id": "t2d_stable_ckd2_controlled", "n": 3, "role": "clear_monitor"},
+    {"phenotype_id": "t1d_early_nephropathy", "n": 2, "role": "clear_monitor"},
+    {"phenotype_id": "t2d_high_uacr_preserved_gfr", "n": 3, "role": "ambiguous"},
+    {"phenotype_id": "t2d_low_gfr_low_uacr", "n": 3, "role": "ambiguous"},
+    {"phenotype_id": "t2d_obesity_ckd2", "n": 2, "role": "moderate_risk"}
+  ]
+}
