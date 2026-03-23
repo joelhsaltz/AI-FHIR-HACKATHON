@@ -1,0 +1,29 @@
+{
+  "anchors": {
+    "age_years": 62,
+    "bmi_kg_m2": 34,
+    "diabetes_type": "type2",
+    "diabetes_duration_years": 12,
+    "hba1c_percent": 8.7,
+    "fasting_glucose_mg_dl": 185,
+    "random_glucose_mg_dl": 242,
+    "c_peptide_ng_ml": 2.1,
+    "creatinine_mg_dl": 1.35,
+    "egfr_ml_min_1_73m2": 58,
+    "uacr_mg_g": 165,
+    "insulin_use": "basal_bolus",
+    "metformin_use": 1,
+    "sglt2_inhibitor_use": 1,
+    "glp1_ra_use": 1
+  },
+  "spread": {
+    "hba1c_percent": {"dist": "truncnorm", "sd": 0.75},
+    "uacr_mg_g": {"dist": "lognormal", "cv": 0.36},
+    "triglycerides_mg_dl": {"dist": "lognormal", "cv": 0.32}
+  },
+  "categorical_probs": {
+    "insulin_use": {"none": 0.05, "basal": 0.2, "bolus": 0.05, "basal_bolus": 0.7, "pump": 0.0},
+    "sglt2_inhibitor_use": {"0": 0.1, "1": 0.9},
+    "glp1_ra_use": {"0": 0.35, "1": 0.65}
+  }
+}

@@ -26,6 +26,9 @@ venv/
 *_key.txt
 credentials.json
 
+# Synthetic EHR generated data (large files, backed up to Box.com)
+synthetic-ehr/generated/
+
 # Exports
 notebooklm_export/
 
