@@ -206,6 +206,53 @@ document.querySelector('colab-scroller#notebook-main').scrollTo(0, y);
 9. Take before/after screenshots
 10. Scroll `colab-scroller` to 5 evenly-spaced positions, screenshot each
 
+## Clinical Agent Pipeline
+
+### Architecture: Three-Layer Context Model
+
+```
+Layer 1: AGENT.md — permanent, domain-independent agent identity
+Layer 2: project-brief.md — per-project context, auto-loaded
+Layer 3: Session context — per-conversation, provided by user
+```
+
+Four agents, each with an AGENT.md at `.claude/agents/<name>/AGENT.md`:
+
+| Agent | Role | Tools | Produces |
+|-------|------|-------|----------|
+| Clinical Scenario Designer | Design clinical scenarios | Read, Web, ICD-10, PubMed, bioRxiv MCP | Scenario docs at `docs/scenarios/` |
+| Clinical Education Reviewer | Evaluate pedagogy | Read, Web, ICD-10, PubMed MCP | Structured review with severity ratings |
+| Notebook Implementation Reviewer | Technical + clinical coherence | Read, Web | Pre-flight report |
+| Synthetic Data Architect | Phenotype configs for data generation | Read, Bash, ICD-10, PubMed MCP | Phenotype JSON + cohort plans |
+
+### Information Flow
+
+```
+User ←→ Scenario Designer → docs/scenarios/<name>.md
+                                    │
+                  ┌─────────────────┼─────────────────┐
+                  ▼                 ▼                  ▼
+           Education         Synthetic Data      Implementation
+           Reviewer          Architect            Reviewer
+                              │
+                              ▼
+                   phenotype JSON → generator → CSV → FHIR bundle
+```
+
+### Synthetic EHR Data Generator
+
+Located at `synthetic-ehr/`. Pure stdlib Python, no external dependencies.
+
+**Phenotype config format:** JSON with anchors (central values), spread
+(distribution parameters), and categorical_probs. Clinical coupling layer
+enforces coherence (eGFR→CKD stage, HbA1c→glucose, UACR→albuminuria stage).
+
+**Scripts:** generate_patients.py, generate_cohort.py, validate_patients.py,
+validate_phenotypes.py, add_phenotype.py, export_fhir_r4_bundle.py.
+
+**Current phenotypes:** 6 diabetes/CKD phenotypes + 3 CKD progression variants.
+Generated data at `synthetic-ehr/generated/` (gitignored).
+
 ## Debugging Guide
 
 ### Common Issues

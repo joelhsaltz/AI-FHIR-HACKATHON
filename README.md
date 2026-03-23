@@ -19,6 +19,7 @@ A comprehensive three-session educational hackathon teaching students how to que
 - [Quick Start](#quick-start)
 - [Session Structure](#session-structure)
 - [Clinical Scenario](#clinical-scenario)
+- [Clinical Agent Pipeline](#clinical-agent-pipeline)
 - [Repository Structure](#repository-structure)
 - [Setup Instructions](#setup-instructions)
 - [Testing](#testing)
@@ -195,6 +196,37 @@ python test_session3_simplified.py
 
 ---
 
+## Clinical Agent Pipeline
+
+Four domain-independent AI agents support scenario design and notebook development:
+
+| Agent | Purpose | Invoke |
+|-------|---------|--------|
+| Clinical Scenario Designer | Design clinical scenarios for any domain | `/scenario-design` |
+| Clinical Education Reviewer | Evaluate notebook pedagogy | `/edu-review` |
+| Notebook Implementation Reviewer | Pre-flight technical + coherence check | `/nb-preflight` |
+| Synthetic Data Architect | Generate phenotype configs for synthetic data | `/synth-data` |
+
+Agents use a three-layer context model: domain-independent identity (AGENT.md) +
+per-project context (project-brief.md) + session-specific clinical references.
+Scenario design documents at `docs/scenarios/` are shared artifacts between agents.
+
+### Synthetic Data Generation
+
+The `synthetic-ehr/` directory contains a phenotype-driven patient generator
+(pure Python, no dependencies). Currently supports diabetes/CKD phenotypes;
+extensible to new clinical domains via the Synthetic Data Architect agent.
+
+```bash
+# Validate phenotype configs
+python3 synthetic-ehr/scripts/validate_phenotypes.py --phenotypes synthetic-ehr/assets/phenotype_template.json
+
+# Generate a test cohort
+python3 synthetic-ehr/scripts/generate_cohort.py --phenotypes <json> --plan <json> --seed 42 --out output.csv
+```
+
+---
+
 ## 📁 Repository Structure
 
 ```
@@ -202,6 +234,26 @@ fhir-hackathon/
 ├── README.md                          # This file
 ├── .gitignore                         # Excludes API keys, system files
 ├── .env.example                       # Template for API keys
+│
+├── .claude/agents/                    # Clinical agent identities + project context
+│   ├── clinical-scenario-designer/AGENT.md
+│   ├── clinical-education-reviewer/AGENT.md
+│   ├── notebook-implementation-reviewer/AGENT.md
+│   ├── synthetic-data-architect/AGENT.md
+│   └── project-brief.md
+├── .claude/skills/                    # Agent orchestration + notebook tools
+│
+├── docs/scenarios/                    # Clinical scenario design documents
+│   ├── diabetes-type-classification.md
+│   ├── ckd-progression-risk.md
+│   ├── autoimmune-differential.md
+│   └── cll-follow-up-therapy-selection.md
+│
+├── synthetic-ehr/                     # Synthetic patient data generator
+│   ├── scripts/                       # Generation + validation scripts
+│   ├── assets/                        # Phenotype configs + cohort plans
+│   ├── references/                    # Schema documentation
+│   └── generated/                     # Output data (gitignored)
 │
 ├── student_materials/
 │   ├── notebooks/                     # Student-facing Jupyter notebooks
