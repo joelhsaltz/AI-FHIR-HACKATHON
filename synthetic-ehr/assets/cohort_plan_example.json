@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0",
+  "cohort_name": "mixed_diabetes_renal_demo",
+  "jobs": [
+    {"phenotype_id": "metabolic_syndrome_no_dm_ckd", "n": 120},
+    {"phenotype_id": "early_t2d_no_ckd", "n": 180},
+    {"phenotype_id": "t2d_obesity_ckd2", "n": 220},
+    {"phenotype_id": "advanced_t2d_ckd3b", "n": 160},
+    {"phenotype_id": "t1d_early_nephropathy", "n": 120},
+    {"phenotype_id": "t1d_poor_control_ckd3a", "n": 100}
+  ]
+}
