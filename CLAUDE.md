@@ -32,7 +32,12 @@ fhir-hackathon/
 │   ├── SESSION2_YOU_ARE_THE_AGENT_SPIKE.md
 │   ├── TEACHING_APPLICATION_PLAN.md
 │   ├── fhir_hackathon_claude_code_spec.md  # historical
-│   └── SIMPLIFICATION_SUMMARY.md
+│   ├── SIMPLIFICATION_SUMMARY.md
+│   └── scenarios/              # Scenario design docs (shared agent artifacts)
+│       ├── autoimmune-differential.md
+│       ├── ckd-progression-risk.md
+│       ├── cll-follow-up-therapy-selection.md
+│       └── diabetes-type-classification.md
 ├── student_materials/          # Final student-facing materials
 │   ├── orientation_pdfs/
 │   ├── run_agent_explained.md
@@ -41,9 +46,23 @@ fhir-hackathon/
 │   ├── validate_fhir_server.py
 │   ├── tests/
 │   └── README_FOR_INSTRUCTORS.md
+├── .claude/agents/                      # Domain-independent agent identities
+│   ├── clinical-scenario-designer/AGENT.md
+│   ├── clinical-education-reviewer/AGENT.md
+│   ├── notebook-implementation-reviewer/AGENT.md
+│   ├── synthetic-data-architect/AGENT.md
+│   └── project-brief.md               # Per-project context (BMI 512, FHIR, learner profile)
 ├── .claude/skills/colab-notebook-tools/  # Colab notebook lifecycle skill
 │   ├── SKILL.md                         # Main skill definition
 │   └── references/                      # Verification + creation pattern docs
+├── .claude/skills/clinical-scenario-designer/   # Scenario design orchestration
+│   └── SKILL.md
+├── .claude/skills/clinical-education-reviewer/  # Pedagogy review orchestration
+│   └── SKILL.md
+├── .claude/skills/notebook-implementation-reviewer/  # Technical + clinical coherence
+│   └── SKILL.md
+├── .claude/skills/synthetic-data-architect/     # Phenotype → data generation
+│   └── SKILL.md
 ├── scripts/colab-tools/                 # Supporting scripts for notebook tools
 │   ├── auth_setup.py                    # One-time Google auth → storageState
 │   ├── colab_screenshot.py              # Playwright Colab screenshotter
@@ -63,6 +82,19 @@ fhir-hackathon/
 ├── test_demo_notebook.py               # Smoke test for demo prototype
 ├── run_main_teaching_smoke_test.py     # Smoke test (being built)
 ├── run_capstone_smoke_test.py          # Smoke test (being built)
+├── synthetic-ehr/              # Synthetic EHR data generation pipeline
+│   ├── scripts/
+│   │   ├── generate_cohort.py          # Cohort generator (phenotypes + plan → CSV)
+│   │   ├── generate_patients.py        # Synthetic patient generator
+│   │   ├── validate_phenotypes.py      # Phenotype config validator
+│   │   ├── validate_patients.py        # Generated patient validator
+│   │   ├── add_phenotype.py            # Add new phenotype to config
+│   │   └── export_fhir_r4_bundle.py    # Export to FHIR R4 Bundle
+│   ├── assets/                         # Phenotype configs and cohort plans
+│   │   └── phenotype_template.json
+│   ├── references/                     # Clinical reference material
+│   ├── docs/                           # Pipeline documentation
+│   └── generated/                      # Output directory for generated data
 ├── .env.example
 ├── README.md, CHANGELOG.md, SPEC.md, TECHNICAL.md
 └── CLAUDE.md
@@ -109,6 +141,11 @@ python scripts/colab-tools/fix_loop.py --generator create_prototype_demo.py --no
 
 # Old screenshot tool (SUPERSEDED — use scripts/colab-tools/ instead)
 # python screenshot_colab.py <file_id>
+
+# Synthetic EHR data generation
+python3 synthetic-ehr/scripts/validate_phenotypes.py --phenotypes synthetic-ehr/assets/phenotype_template.json
+python3 synthetic-ehr/scripts/generate_cohort.py --phenotypes <json> --plan <json> --seed <N> --out <csv> --summary-out <json>
+python3 synthetic-ehr/scripts/validate_patients.py --input <csv>
 ```
 
 ## Key Files
@@ -138,6 +175,13 @@ python scripts/colab-tools/fix_loop.py --generator create_prototype_demo.py --no
 | `docs/REDESIGN_SPIKE.md` | Architecture and technical decisions |
 | `student_materials/run_agent_explained.md` | Beginner-friendly walkthrough of the agent loop |
 | `CHANGELOG.md` | All changes documented here |
+| `.claude/agents/*/AGENT.md` | Domain-independent agent identities (scenario designer, education reviewer, etc.) |
+| `.claude/agents/project-brief.md` | Per-project context (BMI 512, FHIR data, learner profile) |
+| `.claude/skills/*/SKILL.md` | Agent orchestration layers (skill triggers for each agent) |
+| `docs/scenarios/*.md` | Scenario design documents (shared artifacts between agents) |
+| `synthetic-ehr/assets/phenotype_template.json` | Phenotype configs for synthetic data generation |
+| `synthetic-ehr/scripts/generate_patients.py` | Synthetic patient generator |
+| `synthetic-ehr/scripts/generate_cohort.py` | Cohort generator — phenotypes + plan to CSV |
 
 ## Conventions
 
@@ -341,8 +385,25 @@ notebook (regenerated from the generator, with `"outputs": []`) before sharing.
 The skill is symlinked to `~/.claude/skills/colab-notebook-tools` for global
 availability. **Future plan:** extract into a standalone distributable plugin.
 
+## Clinical Agent Pipeline
+
+Four domain-independent agents with AGENT.md identity files at `.claude/agents/`:
+
+| Agent | Skill Trigger | Purpose |
+|-------|--------------|---------|
+| Clinical Scenario Designer | `/scenario-design` | Design clinical scenarios for any domain |
+| Clinical Education Reviewer | `/edu-review` | Evaluate pedagogy of notebooks |
+| Notebook Implementation Reviewer | `/nb-preflight` | Technical + clinical coherence check |
+| Synthetic Data Architect | `/synth-data` | Translate scenarios into phenotype configs |
+
+Architecture: AGENT.md (permanent identity) + project-brief.md (per-project context)
++ session context (per-conversation). Scenario design docs at `docs/scenarios/` are
+shared artifacts consumed by all agents.
+
 ## Active Plans
 
 | Plan file | Description | Status |
 |-----------|-------------|--------|
+| `~/.claude/plans/clinical-agent-architecture.md` | Clinical agent pipeline: 4 agents + skills + synthetic data generator | Implemented |
+| `~/.claude/plans/colab-auth-vertex-migration.md` | Eliminate Colab re-auth: Chrome DevTools MCP (reuse existing Chrome session) + Vertex AI/Colab Enterprise API | Ready to implement — Phase 1 first |
 | `~/.claude/plans/rosy-roaming-hartmanis.md` | Full redesign migration: Phase 0 prototype → Phase 6 smoke tests + docs | In Progress — Phase 0 prototype built |

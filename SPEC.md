@@ -123,6 +123,38 @@ queries.
 - HbA1c threshold for poor glycemic control: >7.5% (richer synthetic data
   distribution than the original v1/v2 threshold of 7.0%)
 
+## Clinical Agent Pipeline
+
+### Scope
+
+Four specialized agents support the notebook development workflow:
+
+1. **Clinical Scenario Designer** — designs scenarios for any clinical domain
+   (diabetes, CKD, autoimmune, oncology). Applies six evaluation tests
+   (single-query shortcut, evidence diversity, ambiguity, clinical plausibility,
+   data availability, difficulty calibration). Uses ICD-10 and PubMed MCP tools
+   for clinical grounding.
+
+2. **Clinical Education Reviewer** — evaluates whether notebooks deliver on
+   learning objectives. Checks for passive observation, trivially solvable tasks,
+   false agency, missing feedback. Produces severity-rated issues.
+
+3. **Notebook Implementation Reviewer** — pre-flight technical check plus
+   clinical coherence against the scenario design. 10 check categories for
+   Colab-specific issues.
+
+4. **Synthetic Data Architect** — translates scenario designs into phenotype
+   JSON configs for the data generator. Runs test batches and validates
+   plausibility. Flags when new variables are needed for new domains.
+
+### Design Decisions
+
+- Agents are domain-independent (no hardcoded clinical codes in AGENT.md)
+- Per-project context via project-brief.md (swappable across projects)
+- Scenario design docs are shared artifacts between agents
+- Synthetic data generator integrated into repo at `synthetic-ehr/`
+- Generated data gitignored; backed up to Box.com
+
 ## Delivery Format
 
 - Two self-contained Google Colab notebooks

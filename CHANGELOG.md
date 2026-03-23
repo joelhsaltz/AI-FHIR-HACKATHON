@@ -8,6 +8,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Clinical agent pipeline** — four domain-independent agents for scenario
+  design, education review, implementation review, and synthetic data generation.
+  - `.claude/agents/*/AGENT.md` — domain-independent agent identities (no
+    hardcoded clinical codes or course names). Work across any clinical domain.
+  - `.claude/agents/project-brief.md` — per-project context auto-loaded from
+    working directory (BMI 512 learner profile, FHIR data, pedagogy model)
+  - `.claude/skills/*/SKILL.md` — thin orchestration layers that assemble
+    context and dispatch agents
+  - `docs/scenarios/` — shared scenario design artifacts consumed by all agents.
+    Four scenarios designed: diabetes type classification, CKD progression risk,
+    autoimmune differential, CLL follow-up therapy
+  - Agent test results documented in `docs/agent-test-results-2026-03-23.md`
+
+- **Synthetic EHR data generator** integrated from standalone Codex project into
+  `synthetic-ehr/`. Phenotype-driven patient generation with clinical coupling
+  constraints (eGFR→CKD stage, HbA1c→glucose via ADAG).
+  - 6 scripts: generate_patients.py, generate_cohort.py, validate_patients.py,
+    validate_phenotypes.py, add_phenotype.py, export_fhir_r4_bundle.py
+  - 6 diabetes/CKD phenotypes with anchors, spread, categorical probabilities
+  - Seed recording added to summary JSON for reproducibility
+  - Generated data gitignored at `synthetic-ehr/generated/`
+  - CKD progression phenotypes: 3 new phenotypes for scenario-specific candidate pools
+
 - **Unified notebook quality pipeline** — expanded `colab-notebook-tools` skill
   with student perspective review, interactive walkthrough, and autonomous fix loop.
   - `scripts/colab-tools/colab_common.py` — shared Playwright utilities extracted
