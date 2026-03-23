@@ -215,7 +215,7 @@ No new directories or files are required in the generator.
 The current generator hardcodes 34 diabetes/CKD variables. To support new
 domains (autoimmune, oncology), the generator needs a modular architecture:
 
-- **Core variables** shared across all scenarios: demographics, vitals,
+- **Core variables** shared across all scenarios: demographics,
   common labs (BMP, lipids)
 - **Domain extensions** added per scenario: diabetes-specific labs and meds,
   autoimmune panels, oncology markers
