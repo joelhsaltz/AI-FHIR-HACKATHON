@@ -1,0 +1,683 @@
+{
+  "schema_version": "1.0",
+  "variables_order": [
+    "patient_id",
+    "age_years",
+    "sex_at_birth",
+    "race",
+    "ethnicity",
+    "bmi_kg_m2",
+    "diabetes_type",
+    "diabetes_duration_years",
+    "systolic_bp_mmhg",
+    "diastolic_bp_mmhg",
+    "heart_rate_bpm",
+    "hba1c_percent",
+    "fasting_glucose_mg_dl",
+    "random_glucose_mg_dl",
+    "c_peptide_ng_ml",
+    "creatinine_mg_dl",
+    "egfr_ml_min_1_73m2",
+    "bun_mg_dl",
+    "urine_albumin_mg_l",
+    "urine_creatinine_mg_dl",
+    "uacr_mg_g",
+    "ldl_mg_dl",
+    "hdl_mg_dl",
+    "triglycerides_mg_dl",
+    "ckd_stage",
+    "albuminuria_stage",
+    "insulin_use",
+    "metformin_use",
+    "sglt2_inhibitor_use",
+    "glp1_ra_use"
+  ],
+  "phenotypes": [
+    {
+      "id": "metabolic_syndrome_no_dm_ckd",
+      "name": "Metabolic syndrome, no diabetes, no CKD",
+      "anchors": {
+        "age_years": 52,
+        "sex_at_birth": "male",
+        "race": "White",
+        "ethnicity": "Non-Hispanic",
+        "bmi_kg_m2": 33,
+        "diabetes_type": "none",
+        "diabetes_duration_years": 0,
+        "systolic_bp_mmhg": 138,
+        "diastolic_bp_mmhg": 86,
+        "heart_rate_bpm": 78,
+        "hba1c_percent": 6.0,
+        "fasting_glucose_mg_dl": 112,
+        "random_glucose_mg_dl": 132,
+        "c_peptide_ng_ml": 3.2,
+        "creatinine_mg_dl": 0.95,
+        "egfr_ml_min_1_73m2": 92,
+        "bun_mg_dl": 16,
+        "urine_albumin_mg_l": 12,
+        "urine_creatinine_mg_dl": 65,
+        "uacr_mg_g": 18,
+        "ldl_mg_dl": 132,
+        "hdl_mg_dl": 39,
+        "triglycerides_mg_dl": 220,
+        "ckd_stage": "G1",
+        "albuminuria_stage": "A1",
+        "insulin_use": "none",
+        "metformin_use": 0,
+        "sglt2_inhibitor_use": 0,
+        "glp1_ra_use": 0
+      },
+      "spread": {
+        "age_years": {
+          "dist": "truncnorm",
+          "sd": 7
+        },
+        "bmi_kg_m2": {
+          "dist": "truncnorm",
+          "sd": 3.2
+        },
+        "systolic_bp_mmhg": {
+          "dist": "truncnorm",
+          "sd": 10
+        },
+        "diastolic_bp_mmhg": {
+          "dist": "truncnorm",
+          "sd": 7
+        },
+        "heart_rate_bpm": {
+          "dist": "truncnorm",
+          "sd": 8
+        },
+        "hba1c_percent": {
+          "dist": "truncnorm",
+          "sd": 0.35
+        },
+        "fasting_glucose_mg_dl": {
+          "dist": "truncnorm",
+          "sd": 14
+        },
+        "random_glucose_mg_dl": {
+          "dist": "truncnorm",
+          "sd": 18
+        },
+        "triglycerides_mg_dl": {
+          "dist": "lognormal",
+          "cv": 0.28
+        },
+        "uacr_mg_g": {
+          "dist": "lognormal",
+          "cv": 0.35
+        }
+      }
+    },
+    {
+      "id": "early_t2d_no_ckd",
+      "name": "Early type 2 diabetes, no CKD",
+      "anchors": {
+        "age_years": 49,
+        "sex_at_birth": "female",
+        "race": "Black",
+        "ethnicity": "Non-Hispanic",
+        "bmi_kg_m2": 31,
+        "diabetes_type": "type2",
+        "diabetes_duration_years": 3,
+        "systolic_bp_mmhg": 136,
+        "diastolic_bp_mmhg": 84,
+        "heart_rate_bpm": 80,
+        "hba1c_percent": 7.2,
+        "fasting_glucose_mg_dl": 146,
+        "random_glucose_mg_dl": 188,
+        "c_peptide_ng_ml": 2.8,
+        "creatinine_mg_dl": 0.98,
+        "egfr_ml_min_1_73m2": 88,
+        "bun_mg_dl": 17,
+        "urine_albumin_mg_l": 16,
+        "urine_creatinine_mg_dl": 68,
+        "uacr_mg_g": 24,
+        "ldl_mg_dl": 122,
+        "hdl_mg_dl": 41,
+        "triglycerides_mg_dl": 205,
+        "ckd_stage": "G2",
+        "albuminuria_stage": "A1",
+        "insulin_use": "none",
+        "metformin_use": 1,
+        "sglt2_inhibitor_use": 0,
+        "glp1_ra_use": 0
+      },
+      "spread": {
+        "hba1c_percent": {
+          "dist": "truncnorm",
+          "sd": 0.5
+        },
+        "fasting_glucose_mg_dl": {
+          "dist": "truncnorm",
+          "sd": 20
+        },
+        "random_glucose_mg_dl": {
+          "dist": "truncnorm",
+          "sd": 24
+        },
+        "uacr_mg_g": {
+          "dist": "lognormal",
+          "cv": 0.3
+        },
+        "triglycerides_mg_dl": {
+          "dist": "lognormal",
+          "cv": 0.25
+        }
+      },
+      "categorical_probs": {
+        "metformin_use": {
+          "0": 0.1,
+          "1": 0.9
+        },
+        "sglt2_inhibitor_use": {
+          "0": 0.85,
+          "1": 0.15
+        },
+        "glp1_ra_use": {
+          "0": 0.9,
+          "1": 0.1
+        }
+      }
+    },
+    {
+      "id": "t2d_obesity_ckd2",
+      "name": "Type 2 diabetes with obesity and CKD G2/A2",
+      "anchors": {
+        "age_years": 58,
+        "sex_at_birth": "male",
+        "race": "White",
+        "ethnicity": "Non-Hispanic",
+        "bmi_kg_m2": 36,
+        "diabetes_type": "type2",
+        "diabetes_duration_years": 10,
+        "systolic_bp_mmhg": 148,
+        "diastolic_bp_mmhg": 92,
+        "heart_rate_bpm": 82,
+        "hba1c_percent": 8.4,
+        "fasting_glucose_mg_dl": 178,
+        "random_glucose_mg_dl": 236,
+        "c_peptide_ng_ml": 3.0,
+        "creatinine_mg_dl": 1.22,
+        "egfr_ml_min_1_73m2": 68,
+        "bun_mg_dl": 22,
+        "urine_albumin_mg_l": 84,
+        "urine_creatinine_mg_dl": 70,
+        "uacr_mg_g": 120,
+        "ldl_mg_dl": 118,
+        "hdl_mg_dl": 34,
+        "triglycerides_mg_dl": 280,
+        "ckd_stage": "G2",
+        "albuminuria_stage": "A2",
+        "insulin_use": "basal",
+        "metformin_use": 1,
+        "sglt2_inhibitor_use": 1,
+        "glp1_ra_use": 0
+      },
+      "spread": {
+        "hba1c_percent": {
+          "dist": "truncnorm",
+          "sd": 0.7
+        },
+        "egfr_ml_min_1_73m2": {
+          "dist": "truncnorm",
+          "sd": 9
+        },
+        "uacr_mg_g": {
+          "dist": "lognormal",
+          "cv": 0.35
+        },
+        "triglycerides_mg_dl": {
+          "dist": "lognormal",
+          "cv": 0.3
+        }
+      },
+      "categorical_probs": {
+        "insulin_use": {
+          "none": 0.2,
+          "basal": 0.55,
+          "bolus": 0.05,
+          "basal_bolus": 0.2,
+          "pump": 0.0
+        },
+        "sglt2_inhibitor_use": {
+          "0": 0.2,
+          "1": 0.8
+        },
+        "glp1_ra_use": {
+          "0": 0.7,
+          "1": 0.3
+        }
+      }
+    },
+    {
+      "id": "advanced_t2d_ckd3b",
+      "name": "Long-duration type 2 diabetes with CKD G3b/A3",
+      "anchors": {
+        "age_years": 67,
+        "sex_at_birth": "female",
+        "race": "White",
+        "ethnicity": "Hispanic",
+        "bmi_kg_m2": 32,
+        "diabetes_type": "type2",
+        "diabetes_duration_years": 16,
+        "systolic_bp_mmhg": 154,
+        "diastolic_bp_mmhg": 88,
+        "heart_rate_bpm": 79,
+        "hba1c_percent": 8.0,
+        "fasting_glucose_mg_dl": 165,
+        "random_glucose_mg_dl": 220,
+        "c_peptide_ng_ml": 1.8,
+        "creatinine_mg_dl": 1.85,
+        "egfr_ml_min_1_73m2": 38,
+        "bun_mg_dl": 30,
+        "urine_albumin_mg_l": 250,
+        "urine_creatinine_mg_dl": 60,
+        "uacr_mg_g": 420,
+        "ldl_mg_dl": 108,
+        "hdl_mg_dl": 36,
+        "triglycerides_mg_dl": 210,
+        "ckd_stage": "G3b",
+        "albuminuria_stage": "A3",
+        "insulin_use": "basal_bolus",
+        "metformin_use": 0,
+        "sglt2_inhibitor_use": 1,
+        "glp1_ra_use": 0
+      },
+      "spread": {
+        "egfr_ml_min_1_73m2": {
+          "dist": "truncnorm",
+          "sd": 6
+        },
+        "uacr_mg_g": {
+          "dist": "lognormal",
+          "cv": 0.4
+        },
+        "creatinine_mg_dl": {
+          "dist": "lognormal",
+          "cv": 0.18
+        },
+        "bun_mg_dl": {
+          "dist": "lognormal",
+          "cv": 0.22
+        }
+      },
+      "categorical_probs": {
+        "insulin_use": {
+          "none": 0.05,
+          "basal": 0.2,
+          "bolus": 0.05,
+          "basal_bolus": 0.7,
+          "pump": 0.0
+        },
+        "metformin_use": {
+          "0": 0.95,
+          "1": 0.05
+        }
+      }
+    },
+    {
+      "id": "t1d_early_nephropathy",
+      "name": "Type 1 diabetes with early nephropathy",
+      "anchors": {
+        "age_years": 41,
+        "sex_at_birth": "male",
+        "race": "White",
+        "ethnicity": "Non-Hispanic",
+        "bmi_kg_m2": 25,
+        "diabetes_type": "type1",
+        "diabetes_duration_years": 18,
+        "systolic_bp_mmhg": 132,
+        "diastolic_bp_mmhg": 80,
+        "heart_rate_bpm": 77,
+        "hba1c_percent": 7.8,
+        "fasting_glucose_mg_dl": 154,
+        "random_glucose_mg_dl": 206,
+        "c_peptide_ng_ml": 0.15,
+        "creatinine_mg_dl": 1.1,
+        "egfr_ml_min_1_73m2": 82,
+        "bun_mg_dl": 20,
+        "urine_albumin_mg_l": 52,
+        "urine_creatinine_mg_dl": 67,
+        "uacr_mg_g": 78,
+        "ldl_mg_dl": 102,
+        "hdl_mg_dl": 52,
+        "triglycerides_mg_dl": 135,
+        "ckd_stage": "G2",
+        "albuminuria_stage": "A2",
+        "insulin_use": "pump",
+        "metformin_use": 0,
+        "sglt2_inhibitor_use": 0,
+        "glp1_ra_use": 0
+      },
+      "spread": {
+        "hba1c_percent": {
+          "dist": "truncnorm",
+          "sd": 0.65
+        },
+        "c_peptide_ng_ml": {
+          "dist": "lognormal",
+          "cv": 0.35
+        },
+        "uacr_mg_g": {
+          "dist": "lognormal",
+          "cv": 0.35
+        }
+      },
+      "categorical_probs": {
+        "insulin_use": {
+          "none": 0.0,
+          "basal": 0.05,
+          "bolus": 0.05,
+          "basal_bolus": 0.25,
+          "pump": 0.65
+        }
+      }
+    },
+    {
+      "id": "t1d_poor_control_ckd3a",
+      "name": "Type 1 diabetes, poor control, CKD G3a/A3",
+      "anchors": {
+        "age_years": 55,
+        "sex_at_birth": "female",
+        "race": "Black",
+        "ethnicity": "Non-Hispanic",
+        "bmi_kg_m2": 27,
+        "diabetes_type": "type1",
+        "diabetes_duration_years": 30,
+        "systolic_bp_mmhg": 146,
+        "diastolic_bp_mmhg": 84,
+        "heart_rate_bpm": 81,
+        "hba1c_percent": 9.1,
+        "fasting_glucose_mg_dl": 188,
+        "random_glucose_mg_dl": 255,
+        "c_peptide_ng_ml": 0.05,
+        "creatinine_mg_dl": 1.55,
+        "egfr_ml_min_1_73m2": 52,
+        "bun_mg_dl": 27,
+        "urine_albumin_mg_l": 240,
+        "urine_creatinine_mg_dl": 67,
+        "uacr_mg_g": 360,
+        "ldl_mg_dl": 112,
+        "hdl_mg_dl": 48,
+        "triglycerides_mg_dl": 170,
+        "ckd_stage": "G3a",
+        "albuminuria_stage": "A3",
+        "insulin_use": "basal_bolus",
+        "metformin_use": 0,
+        "sglt2_inhibitor_use": 0,
+        "glp1_ra_use": 0
+      },
+      "spread": {
+        "hba1c_percent": {
+          "dist": "truncnorm",
+          "sd": 0.8
+        },
+        "egfr_ml_min_1_73m2": {
+          "dist": "truncnorm",
+          "sd": 7
+        },
+        "uacr_mg_g": {
+          "dist": "lognormal",
+          "cv": 0.38
+        }
+      },
+      "categorical_probs": {
+        "insulin_use": {
+          "none": 0.0,
+          "basal": 0.1,
+          "bolus": 0.05,
+          "basal_bolus": 0.75,
+          "pump": 0.1
+        }
+      }
+    },
+    {
+      "id": "t2d_stable_ckd2_controlled",
+      "name": "Type 2 diabetes, stable CKD G2, well-controlled",
+      "anchors": {
+        "age_years": 62,
+        "sex_at_birth": "male",
+        "race": "White",
+        "ethnicity": "Non-Hispanic",
+        "bmi_kg_m2": 29,
+        "diabetes_type": "type2",
+        "diabetes_duration_years": 8,
+        "systolic_bp_mmhg": 130,
+        "diastolic_bp_mmhg": 78,
+        "heart_rate_bpm": 82,
+        "hba1c_percent": 6.8,
+        "fasting_glucose_mg_dl": 128,
+        "random_glucose_mg_dl": 158,
+        "c_peptide_ng_ml": 2.6,
+        "creatinine_mg_dl": 1.08,
+        "egfr_ml_min_1_73m2": 72,
+        "bun_mg_dl": 18,
+        "urine_albumin_mg_l": 14,
+        "urine_creatinine_mg_dl": 70,
+        "uacr_mg_g": 20,
+        "ldl_mg_dl": 95,
+        "hdl_mg_dl": 44,
+        "triglycerides_mg_dl": 155,
+        "ckd_stage": "G2",
+        "albuminuria_stage": "A1",
+        "insulin_use": "none",
+        "metformin_use": 1,
+        "sglt2_inhibitor_use": 1,
+        "glp1_ra_use": 0
+      },
+      "spread": {
+        "hba1c_percent": {
+          "dist": "truncnorm",
+          "sd": 0.4
+        },
+        "egfr_ml_min_1_73m2": {
+          "dist": "truncnorm",
+          "sd": 8
+        },
+        "uacr_mg_g": {
+          "dist": "lognormal",
+          "cv": 0.3
+        },
+        "triglycerides_mg_dl": {
+          "dist": "lognormal",
+          "cv": 0.3
+        },
+        "age_years": {
+          "dist": "truncnorm",
+          "sd": 6
+        }
+      },
+      "categorical_probs": {
+        "insulin_use": {
+          "none": 0.55,
+          "basal": 0.35,
+          "bolus": 0.0,
+          "basal_bolus": 0.1,
+          "pump": 0.0
+        },
+        "sglt2_inhibitor_use": {
+          "0": 0.3,
+          "1": 0.7
+        },
+        "glp1_ra_use": {
+          "0": 0.7,
+          "1": 0.3
+        },
+        "metformin_use": {
+          "0": 0.1,
+          "1": 0.9
+        }
+      }
+    },
+    {
+      "id": "t2d_high_uacr_preserved_gfr",
+      "name": "Type 2 diabetes, high albuminuria, preserved GFR (ambiguous)",
+      "anchors": {
+        "age_years": 52,
+        "sex_at_birth": "female",
+        "race": "Black",
+        "ethnicity": "Non-Hispanic",
+        "bmi_kg_m2": 34,
+        "diabetes_type": "type2",
+        "diabetes_duration_years": 7,
+        "systolic_bp_mmhg": 142,
+        "diastolic_bp_mmhg": 88,
+        "heart_rate_bpm": 80,
+        "hba1c_percent": 8.2,
+        "fasting_glucose_mg_dl": 172,
+        "random_glucose_mg_dl": 225,
+        "c_peptide_ng_ml": 3.1,
+        "creatinine_mg_dl": 0.88,
+        "egfr_ml_min_1_73m2": 92,
+        "bun_mg_dl": 15,
+        "urine_albumin_mg_l": 180,
+        "urine_creatinine_mg_dl": 65,
+        "uacr_mg_g": 280,
+        "ldl_mg_dl": 128,
+        "hdl_mg_dl": 36,
+        "triglycerides_mg_dl": 245,
+        "ckd_stage": "G1",
+        "albuminuria_stage": "A2",
+        "insulin_use": "none",
+        "metformin_use": 1,
+        "sglt2_inhibitor_use": 0,
+        "glp1_ra_use": 0
+      },
+      "spread": {
+        "hba1c_percent": {
+          "dist": "truncnorm",
+          "sd": 0.6
+        },
+        "fasting_glucose_mg_dl": {
+          "dist": "truncnorm",
+          "sd": 20
+        },
+        "random_glucose_mg_dl": {
+          "dist": "truncnorm",
+          "sd": 24
+        },
+        "uacr_mg_g": {
+          "dist": "lognormal",
+          "cv": 0.35
+        },
+        "triglycerides_mg_dl": {
+          "dist": "lognormal",
+          "cv": 0.25
+        },
+        "egfr_ml_min_1_73m2": {
+          "dist": "truncnorm",
+          "sd": 10
+        },
+        "urine_albumin_mg_l": {
+          "dist": "lognormal",
+          "cv": 0.35
+        },
+        "age_years": {
+          "dist": "truncnorm",
+          "sd": 7
+        }
+      },
+      "categorical_probs": {
+        "metformin_use": {
+          "0": 0.15,
+          "1": 0.85
+        },
+        "sglt2_inhibitor_use": {
+          "0": 0.7,
+          "1": 0.3
+        },
+        "glp1_ra_use": {
+          "0": 0.9,
+          "1": 0.1
+        },
+        "insulin_use": {
+          "none": 0.4,
+          "basal": 0.4,
+          "bolus": 0.0,
+          "basal_bolus": 0.2,
+          "pump": 0.0
+        }
+      }
+    },
+    {
+      "id": "t2d_low_gfr_low_uacr",
+      "name": "Type 2 diabetes, reduced GFR, minimal albuminuria (ambiguous)",
+      "anchors": {
+        "age_years": 72,
+        "sex_at_birth": "male",
+        "race": "White",
+        "ethnicity": "Non-Hispanic",
+        "bmi_kg_m2": 28,
+        "diabetes_type": "type2",
+        "diabetes_duration_years": 12,
+        "systolic_bp_mmhg": 140,
+        "diastolic_bp_mmhg": 80,
+        "heart_rate_bpm": 82,
+        "hba1c_percent": 7.1,
+        "fasting_glucose_mg_dl": 138,
+        "random_glucose_mg_dl": 172,
+        "c_peptide_ng_ml": 2.2,
+        "creatinine_mg_dl": 1.45,
+        "egfr_ml_min_1_73m2": 48,
+        "bun_mg_dl": 24,
+        "urine_albumin_mg_l": 10,
+        "urine_creatinine_mg_dl": 55,
+        "uacr_mg_g": 18,
+        "ldl_mg_dl": 102,
+        "hdl_mg_dl": 42,
+        "triglycerides_mg_dl": 168,
+        "ckd_stage": "G3a",
+        "albuminuria_stage": "A1",
+        "insulin_use": "basal",
+        "metformin_use": 0,
+        "sglt2_inhibitor_use": 1,
+        "glp1_ra_use": 0
+      },
+      "spread": {
+        "hba1c_percent": {
+          "dist": "truncnorm",
+          "sd": 0.5
+        },
+        "egfr_ml_min_1_73m2": {
+          "dist": "truncnorm",
+          "sd": 7
+        },
+        "uacr_mg_g": {
+          "dist": "lognormal",
+          "cv": 0.3
+        },
+        "triglycerides_mg_dl": {
+          "dist": "lognormal",
+          "cv": 0.3
+        },
+        "age_years": {
+          "dist": "truncnorm",
+          "sd": 5
+        }
+      },
+      "categorical_probs": {
+        "insulin_use": {
+          "none": 0.15,
+          "basal": 0.55,
+          "bolus": 0.0,
+          "basal_bolus": 0.3,
+          "pump": 0.0
+        },
+        "sglt2_inhibitor_use": {
+          "0": 0.3,
+          "1": 0.7
+        },
+        "glp1_ra_use": {
+          "0": 0.7,
+          "1": 0.3
+        },
+        "metformin_use": {
+          "0": 0.8,
+          "1": 0.2
+        }
+      }
+    }
+  ]
+}
