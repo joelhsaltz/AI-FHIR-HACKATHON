@@ -71,6 +71,9 @@ def main() -> None:
     dm_counts = Counter(row["diabetes_type"] for row in rows)
 
     summary = {
+        "seed": args.seed,
+        "phenotypes_file": args.phenotypes,
+        "plan_file": args.plan,
         "rows": len(rows),
         "per_phenotype": dict(per_pheno_counter),
         "diabetes_type_counts": dict(dm_counts),

@@ -351,6 +351,7 @@ def main() -> None:
     parser.add_argument("--n", type=int, default=100, help="Number of patients")
     parser.add_argument("--seed", type=int, default=1, help="Random seed")
     parser.add_argument("--out", required=True, help="Output CSV path")
+    parser.add_argument("--summary-out", required=False, help="Optional summary JSON path")
     args = parser.parse_args()
 
     if args.n <= 0:
@@ -373,6 +374,20 @@ def main() -> None:
         writer = csv.DictWriter(f, fieldnames=variables)
         writer.writeheader()
         writer.writerows(rows)
+
+    if args.summary_out:
+        from collections import Counter
+        summary = {
+            "seed": args.seed,
+            "phenotypes_file": args.phenotypes,
+            "phenotype_id": args.phenotype_id,
+            "rows": len(rows),
+            "diabetes_type_counts": dict(Counter(r["diabetes_type"] for r in rows)),
+            "ckd_stage_counts": dict(Counter(r["ckd_stage"] for r in rows)),
+        }
+        with open(args.summary_out, "w", encoding="utf-8") as f:
+            json.dump(summary, f, indent=2)
+            f.write("\n")
 
     print(f"Wrote {len(rows)} rows to {args.out}")
 
