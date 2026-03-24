@@ -820,7 +820,9 @@ INVESTIGATE = r"""
 #@title Step 5: Investigate (change dropdown → click Run → repeat)
 query = "Get problem list" #@param ["Get problem list", "Get HbA1c", "Get eGFR", "Get UACR", "Get medications", "Get C-peptide", "Get BMI", "Get creatinine", "Get demographics", "Get encounters"]
 
-if _state["patient_id"] is None:
+if "_state" not in dir():
+    display(Markdown("⚠️ **Runtime was reset.** Go to **Runtime → Run all** (or Ctrl+F9) to re-run the notebook from the top."))
+elif _state["patient_id"] is None:
     display(Markdown("**Run Step 4 first.**"))
 elif _state["current_case_idx"] >= _state["num_cases"]:
     display(Markdown("**All cases complete.** See your results in Step 6."))
@@ -964,7 +966,9 @@ CLASSIFY = r"""
 #@title Step 5b: Classify this patient (when you're ready)
 classification = "Routine" #@param ["Routine", "Moderate complexity", "High complexity", "No diabetes"]
 
-if _state["patient_id"] is None:
+if "_state" not in dir():
+    display(Markdown("⚠️ **Runtime was reset.** Go to **Runtime → Run all** (or Ctrl+F9) to re-run the notebook from the top."))
+elif _state["patient_id"] is None:
     display(Markdown("**Run Step 4 first.**"))
 elif _state["current_case_idx"] >= _state["num_cases"]:
     display(Markdown("**All cases complete.** See your results in Step 6."))
@@ -1079,7 +1083,9 @@ else:
 ACTIVITY1_RESULTS = r"""
 #@title Step 6: Your results
 
-if not _state.get("human_results"):
+if "_state" not in dir():
+    display(Markdown("⚠️ **Runtime was reset.** Go to **Runtime → Run all** (or Ctrl+F9) to re-run the notebook from the top."))
+elif not _state.get("human_results"):
     display(Markdown("**Complete Activity 1 first** (Step 5)."))
 else:
     _h = _state["human_results"]
@@ -1113,28 +1119,32 @@ PROMPT_EDITOR = r"""
 #@title Step 7: Write your AI prompt
 agent_prompt = "Classify this patient's diabetes management complexity." #@param {type:"string"}
 
-_state["agent_prompt"] = agent_prompt
-
-display(Markdown(
-    "## Activity 2: Write Your AI Prompt\n\n"
-    "This prompt tells the AI agent how to approach the complexity assessment. "
-    f"It will use this prompt for all {_state.get('num_cases', '?')} cases.\n\n"
-    f"**Your prompt:**\n\n> {agent_prompt[:400]}{'...' if len(agent_prompt) > 400 else ''}\n\n"
-    "**Ideas to try:**\n"
-    "- Emphasize efficiency: *\"use no more than 4 queries per patient\"*\n"
-    "- Change priorities: *\"always check UACR — eGFR alone misses early damage\"*\n"
-    "- Add constraints: *\"check conditions first to rule out non-diabetic patients\"*\n"
-    "- Change persona: *\"you are a nephrologist reviewing a diabetes panel\"*\n\n"
-    "Run **Step 8** to let the agent work. You can come back here, "
-    "edit the prompt, and re-run Step 8 to compare different prompts."
-))
+if "_state" not in dir():
+    display(Markdown("⚠️ **Runtime was reset.** Go to **Runtime → Run all** (or Ctrl+F9) to re-run the notebook from the top."))
+else:
+    _state["agent_prompt"] = agent_prompt
+    display(Markdown(
+        "## Activity 2: Write Your AI Prompt\n\n"
+        "This prompt tells the AI agent how to approach the complexity assessment. "
+        f"It will use this prompt for all {_state.get('num_cases', '?')} cases.\n\n"
+        f"**Your prompt:**\n\n> {agent_prompt[:400]}{'...' if len(agent_prompt) > 400 else ''}\n\n"
+        "**Ideas to try:**\n"
+        "- Emphasize efficiency: *\"use no more than 4 queries per patient\"*\n"
+        "- Change priorities: *\"always check UACR — eGFR alone misses early damage\"*\n"
+        "- Add constraints: *\"check conditions first to rule out non-diabetic patients\"*\n"
+        "- Change persona: *\"you are a nephrologist reviewing a diabetes panel\"*\n\n"
+        "Run **Step 8** to let the agent work. You can come back here, "
+        "edit the prompt, and re-run Step 8 to compare different prompts."
+    ))
 """.strip()
 
 
 RUN_AI_AGENT = r"""
 #@title Step 8: Run the AI agent on all cases
 
-if not _state.get("case_patients"):
+if "_state" not in dir():
+    display(Markdown("⚠️ **Runtime was reset.** Go to **Runtime → Run all** (or Ctrl+F9) to re-run the notebook from the top."))
+elif not _state.get("case_patients"):
     display(Markdown("**Run Steps 3-4 first.**"))
 elif _anthropic_client is None:
     display(Markdown("**AI Agent requires an API key.** See the setup section above."))
@@ -1291,7 +1301,9 @@ else:
 SUMMARY = r"""
 #@title Step 9: Summary
 
-if not _state.get("human_results"):
+if "_state" not in dir():
+    display(Markdown("⚠️ **Runtime was reset.** Go to **Runtime → Run all** (or Ctrl+F9) to re-run the notebook from the top."))
+elif not _state.get("human_results"):
     display(Markdown("**Complete Activity 1 first.**"))
 elif not _state.get("agent_runs"):
     display(Markdown("**Complete Activity 2 first** (at least one agent run)."))
