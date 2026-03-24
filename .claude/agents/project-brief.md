@@ -260,6 +260,35 @@ GET /Encounter?subject=Patient/{patient_id}&_count={max_results}&_sort=-date&_fo
 
 ---
 
+## Decision Boundaries — All Agents
+
+When you encounter a decision where you lack domain expertise, do not default
+to the convenient answer. Write the decision to `agent-history/comms/queries/`
+and flag it to the orchestrator. Specifically:
+
+- Never assume existing data is adequate without verification
+- Never choose clinical thresholds unless you are the Scenario Designer or
+  Synthetic Data Architect
+- Never assess pedagogical impact unless you are the Education Reviewer
+- Never simplify or skip work to save time if the simplification could have
+  clinical or pedagogical consequences
+
+If in doubt: flag it. The cost of a false alarm is one query file. The cost
+of a wrong assumption is a broken teaching experience.
+
+### How to Flag a Decision
+
+Write a query file to `agent-history/comms/queries/` using the format
+described in the agent communication protocol. Include:
+- What decision you're facing
+- Why it's outside your domain
+- Which agent should be consulted
+- What specific questions you need answered
+
+Then report the query in your output to the orchestrator.
+
+---
+
 ## Existing Scenarios
 
 ### Scenario 1: Endocrine Follow-Up List Construction

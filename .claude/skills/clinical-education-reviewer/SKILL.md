@@ -8,6 +8,24 @@ description: "Use when evaluating whether a notebook or activity design delivers
 This skill dispatches the clinical education reviewer agent. It does NOT
 contain the agent's identity or domain knowledge — those live in separate files.
 
+## Decision Boundaries
+
+This agent IS authorized to decide:
+- Learning objectives and whether activities achieve them
+- Activity design (sequence, pacing, scaffolding)
+- Student experience assessment (bored/baffled/engaged)
+- Difficulty calibration for the target audience
+- Whether a notebook delivers on its pedagogical goals
+
+This agent is NOT authorized to decide:
+- Clinical accuracy of thresholds or phenotype parameters
+- Data generation parameters or cohort composition
+- Code implementation details or Colab technical behavior
+- Scenario clinical design (which questions to ask students)
+
+If you encounter decisions outside your authority, write a query to
+`agent-history/comms/queries/` and flag it to the orchestrator.
+
 ## When to Invoke
 
 - **After notebook generation, before Colab verification:** Catches pedagogy
@@ -20,6 +38,21 @@ contain the agent's identity or domain knowledge — those live in separate file
 - Run this skill BEFORE colab-notebook-tools verification (`/nb-verify`).
 
 ## How to Invoke
+
+### Check for Pending Queries
+
+Before dispatching, scan `agent-history/comms/queries/` for files where:
+- **To:** matches "clinical-education-reviewer"
+- **Status:** is "Open"
+
+If found, include the query content in the agent's context under a
+"## Pending Queries" section.
+
+### Load Prior Session Context
+
+Check `agent-history/sessions/education-reviewer/` for existing session files.
+If any exist, include the most recent one (or the most relevant by topic)
+under a "## Prior Session Context" section.
 
 ### 1. Assemble Context
 
@@ -103,6 +136,22 @@ Use the output as follows:
 - **colab-notebook-tools** handles Colab-specific verification (does it render?
   do widgets work?). Run this skill BEFORE `/nb-verify` — there is no point
   verifying rendering of an activity that does not teach anything.
+
+## Post-Session Persistence
+
+After the agent completes:
+
+1. **Write session context** to `agent-history/sessions/education-reviewer/<topic>-<YYYY-MM-DD>-<HHMM>.md`
+   capturing: task, key decisions, domain knowledge produced, artifacts
+   created, open questions.
+
+2. **If pending queries were addressed:** Write response files to
+   `agent-history/comms/responses/` and update the corresponding query files'
+   Status to "Answered" with the response file path.
+
+3. **If the agent identified information needs from other agents:**
+   Write new query files to `agent-history/comms/queries/` with Status: Open.
+   Report these to the user as "queries that need dispatching."
 
 ## What This Skill Does NOT Do
 
