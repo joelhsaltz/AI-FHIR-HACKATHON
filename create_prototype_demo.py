@@ -131,6 +131,7 @@ LAB_LOOKUP = {
     "BMI": ("39156-5", "Body mass index — insulin-resistance context"),
     "Creatinine": ("2160-0", "Serum creatinine — kidney function"),
     "eGFR": ("33914-3", "Estimated GFR — kidney function"),
+    "UACR": ("14959-1", "Urine albumin-to-creatinine ratio — early kidney damage"),
 }
 
 # === FHIR query functions ===
@@ -214,26 +215,9 @@ _FAKE_CONDITIONS = [
 ]
 
 def _search_all_conditions(patient_id, max_results=20):
-    # Scrambled version: replaces diabetes diagnoses with random non-diabetes conditions
-    # so the problem list doesn't give away the answer.
-    import hashlib
-    fhir_url, raw_result = _search_all_conditions_raw(patient_id, max_results)
-    # Deterministic seed per patient so same patient always gets same fakes
-    seed = int(hashlib.md5(patient_id.encode()).hexdigest()[:8], 16)
-    rng = _random.Random(seed)
-    available_fakes = list(_FAKE_CONDITIONS)
-    rng.shuffle(available_fakes)
-    fake_idx = 0
-    scrambled = []
-    for row in raw_result["results"]:
-        if row.get("code") in _DIABETES_CODES:
-            if fake_idx < len(available_fakes):
-                scrambled.append(dict(available_fakes[fake_idx]))
-                fake_idx += 1
-            # else skip — ran out of fakes (unlikely)
-        else:
-            scrambled.append(row)
-    return fhir_url, {"total": raw_result["total"], "results": scrambled}
+    # In the complexity assessment scenario, students need to see the real
+    # diagnosis (including diabetes) to verify it exists. No scrambling.
+    return _search_all_conditions_raw(patient_id, max_results)
 
 def _search_observations(patient_id, loinc_code, max_results=5):
     fhir_url, bundle = _fhir_get("Observation", {
@@ -289,19 +273,111 @@ def _show_query(fhir_url, resource_type=None):
     extra = f" · **{resource_type}** resource" if resource_type else ""
     display(Markdown(f"> **FHIR Query:** `{fhir_url}`{extra}"))
 
-# === Ground truth ===
+# === Ground truth (complexity assessment) ===
 def _get_ground_truth(patient_id):
+    # Deterministic complexity scoring per scenario doc ground truth logic.
+    # Step 1: Check for diabetes diagnosis
     _, conds = _search_all_conditions_raw(patient_id)
     codes = [r.get("code", "") for r in conds.get("results", [])]
-    if "46635009" in codes:
-        return "Type 1"
-    if "44054006" in codes:
-        return "Type 2"
-    return "No diabetes"
+    has_t1d = "46635009" in codes
+    has_t2d = "44054006" in codes
+    if not has_t1d and not has_t2d:
+        return "No diabetes"
+
+    # Step 2: Count complicating factors
+    factors = 0
+    factor_details = []
+
+    # HbA1c > 7.5%
+    _, hba1c_result = _search_observations(patient_id, "4548-4", max_results=1)
+    hba1c_val = None
+    if hba1c_result["results"]:
+        hba1c_val = hba1c_result["results"][0].get("value")
+        if hba1c_val is not None and hba1c_val > 7.5:
+            factors += 1
+            factor_details.append(f"A1c={hba1c_val}")
+
+    # eGFR < 60
+    _, egfr_result = _search_observations(patient_id, "33914-3", max_results=1)
+    egfr_val = None
+    if egfr_result["results"]:
+        egfr_val = egfr_result["results"][0].get("value")
+        if egfr_val is not None and egfr_val < 60:
+            factors += 1
+            factor_details.append(f"eGFR={egfr_val}")
+
+    # UACR >= 30
+    _, uacr_result = _search_observations(patient_id, "14959-1", max_results=1)
+    uacr_val = None
+    if uacr_result["results"]:
+        uacr_val = uacr_result["results"][0].get("value")
+        if uacr_val is not None and uacr_val >= 30:
+            factors += 1
+            factor_details.append(f"UACR={uacr_val}")
+
+    # Step 3: Extreme single findings → automatic High
+    if egfr_val is not None and egfr_val < 30:
+        return "High complexity"
+    if uacr_val is not None and uacr_val >= 300:
+        return "High complexity"
+
+    # Step 4: Category by factor count
+    if factors == 0:
+        return "Routine"
+    elif factors == 1:
+        return "Moderate complexity"
+    else:
+        return "High complexity"
+
+def _get_ground_truth_detail(patient_id):
+    # Return ground truth plus the complicating factors for feedback.
+    _, conds = _search_all_conditions_raw(patient_id)
+    codes = [r.get("code", "") for r in conds.get("results", [])]
+    has_diabetes = "46635009" in codes or "44054006" in codes
+    if not has_diabetes:
+        return "No diabetes", [], {}
+
+    details = {}
+    factors = []
+
+    _, hba1c_r = _search_observations(patient_id, "4548-4", max_results=1)
+    if hba1c_r["results"]:
+        v = hba1c_r["results"][0].get("value")
+        details["hba1c"] = v
+        if v is not None and v > 7.5:
+            factors.append("poor_control")
+
+    _, egfr_r = _search_observations(patient_id, "33914-3", max_results=1)
+    if egfr_r["results"]:
+        v = egfr_r["results"][0].get("value")
+        details["egfr"] = v
+        if v is not None and v < 60:
+            factors.append("reduced_kidney")
+
+    _, uacr_r = _search_observations(patient_id, "14959-1", max_results=1)
+    if uacr_r["results"]:
+        v = uacr_r["results"][0].get("value")
+        details["uacr"] = v
+        if v is not None and v >= 30:
+            factors.append("albuminuria")
+
+    # Extreme findings
+    if details.get("egfr") is not None and details["egfr"] < 30:
+        return "High complexity", factors, details
+    if details.get("uacr") is not None and details["uacr"] >= 300:
+        return "High complexity", factors, details
+
+    if len(factors) == 0:
+        return "Routine", factors, details
+    elif len(factors) == 1:
+        return "Moderate complexity", factors, details
+    else:
+        return "High complexity", factors, details
 
 # === State ===
 _state = {
-    "question": "Classify this patient: Type 1 diabetes, Type 2 diabetes, or no diabetes?",
+    "question": "How would you categorize this patient's diabetes management complexity?",
+    "categories": ["Routine", "Moderate complexity", "High complexity", "No diabetes"],
     "num_cases": 0,
     "case_patients": [],
     "current_case_idx": 0,
@@ -310,6 +386,8 @@ _state = {
     "history": [],
     "evidence": {},
     "correct_answer": None,
+    "correct_factors": [],
+    "correct_details": {},
     "human_results": [],
     "agent_runs": [],
     "agent_prompt": "",
@@ -318,20 +396,18 @@ _state = {
 def _evidence_gaps():
     ev = _state["evidence"]
     gaps = []
-    if "demographics" not in ev:
-        gaps.append(("Demographics — age at onset", "Patient"))
     if "conditions" not in ev:
-        gaps.append(("Problem list — existing diagnoses", "Condition"))
-    if "c_peptide" not in ev:
-        gaps.append(("C-peptide — direct T1/T2 differentiator", "Observation"))
+        gaps.append(("Problem list — verify diabetes diagnosis", "Condition"))
     if "hba1c" not in ev:
         gaps.append(("HbA1c — glycemic control", "Observation"))
-    if "bmi" not in ev:
-        gaps.append(("BMI — insulin resistance context", "Observation"))
     if "egfr" not in ev:
-        gaps.append(("eGFR — kidney function / CKD staging", "Observation"))
+        gaps.append(("eGFR — kidney function", "Observation"))
+    if "uacr" not in ev:
+        gaps.append(("UACR — early kidney damage", "Observation"))
     if "treatment_regimen" not in ev:
-        gaps.append(("Treatment regimen — insulin-only vs oral agents", "MedicationRequest"))
+        gaps.append(("Medications — regimen context", "MedicationRequest"))
+    if "demographics" not in ev:
+        gaps.append(("Demographics — patient context", "Patient"))
     return gaps
 
 def _render_dashboard():
@@ -377,12 +453,11 @@ def _render_dashboard():
         lines.append("")
 
     gaps = _evidence_gaps()
-    lines.append("### Still Needed")
-    if gaps:
-        for label, resource in gaps:
-            lines.append(f"- {label} — *query* `{resource}`")
-    else:
-        lines.append("*All key evidence categories covered. You may be ready to classify.*")
+    _checked = len(ev)
+    _total_key = _checked + len(gaps)
+    lines.append(f"### Progress: {_checked} of ~{_total_key} key evidence types gathered")
+    if not gaps:
+        lines.append("*You've checked all the major evidence categories. Ready to classify?*")
     lines.append("")
 
     lines.append("### Query Log")
@@ -402,7 +477,7 @@ CLAUDE_TOOLS = [
         "name": "get_patient",
         "description": (
             "FHIR query: GET /Patient/{id}. Returns demographics (age, gender, DOB). "
-            "Age at onset is clinically relevant: younger onset leans toward Type 1."
+            "Provides patient context but does not directly determine complexity category."
         ),
         "input_schema": {
             "type": "object",
@@ -415,9 +490,10 @@ CLAUDE_TOOLS = [
         "description": (
             "FHIR query: GET /Observation?subject=Patient/{id}&code={loinc}. "
             "Query ONE lab at a time to reason about each result before deciding the next query. "
-            "Key LOINC codes: 1986-9 C-peptide (direct T1/T2 differentiator — low means beta-cell "
-            "destruction), 4548-4 HbA1c (glycemic control, severity not type), 39156-5 BMI "
-            "(insulin resistance context), 33914-3 eGFR (kidney function / CKD staging)."
+            "Key LOINC codes: 4548-4 HbA1c (glycemic control — >7.5% suboptimal), "
+            "33914-3 eGFR (kidney function — <60 = CKD stage 3+), "
+            "14959-1 UACR (early kidney damage — >=30 mg/g = microalbuminuria), "
+            "1986-9 C-peptide (diabetes type context), 39156-5 BMI, 2160-0 creatinine."
         ),
         "input_schema": {
             "type": "object",
@@ -433,7 +509,7 @@ CLAUDE_TOOLS = [
         "name": "search_medications",
         "description": (
             "FHIR query: GET /MedicationRequest?subject=Patient/{id}. Returns treatment regimen. "
-            "Insulin-only pattern suggests Type 1; oral agents (metformin, sulfonylureas) suggest Type 2."
+            "Provides context on medication complexity but is not a direct category driver."
         ),
         "input_schema": {
             "type": "object",
@@ -448,8 +524,8 @@ CLAUDE_TOOLS = [
         "name": "search_all_conditions",
         "description": (
             "FHIR query: GET /Condition?subject=Patient/{id}. Returns full problem list with "
-            "SNOMED codes and clinical status. Note: diabetes-specific diagnoses have been "
-            "replaced to prevent answer leakage — use labs and medications for classification."
+            "SNOMED codes and clinical status. ESSENTIAL first query — verifies whether the "
+            "patient has a diabetes diagnosis at all. Without diabetes, complexity is N/A."
         ),
         "input_schema": {
             "type": "object",
@@ -571,7 +647,7 @@ import random as _random
 
 _final_candidates = []
 
-display(Markdown("*Querying FHIR server for working-age adults...*"))
+display(Markdown("*Querying FHIR server to build a diverse patient pool...*"))
 
 _candidate_rows = []
 _seen_patients = set()
@@ -580,7 +656,7 @@ _diabetic_pids = set()
 
 # --- Source 1 & 2: patients with T1D or T2D conditions ---
 for _label, _code in [("t1d", SNOMED["t1d"]), ("t2d", SNOMED["t2d"])]:
-    _furl, _cond_result = _search_conditions(_code, max_results=50)
+    _furl, _cond_result = _search_conditions(_code, max_results=700)
     _query_log.append((_furl, "Condition"))
     for _item in _cond_result["results"]:
         _pid = _normalize_patient_ref(_item.get("patient_reference", ""))
@@ -591,7 +667,7 @@ for _label, _code in [("t1d", SNOMED["t1d"]), ("t2d", SNOMED["t2d"])]:
         except Exception:
             continue
         _age = _pat.get("age")
-        if _age is None or _age > 50:
+        if _age is None:
             continue
         _candidate_rows.append({
             "Name": _pat.get("name", ""),
@@ -603,8 +679,8 @@ for _label, _code in [("t1d", SNOMED["t1d"]), ("t2d", SNOMED["t2d"])]:
         _seen_patients.add(_pid)
         _diabetic_pids.add(_pid)
 
-# --- Source 3: non-diabetic patients (metabolic syndrome phenotype) ---
-_furl_pat, _pat_bundle = _fhir_get("Patient", {"_count": "50"})
+# --- Source 3: non-diabetic patients ---
+_furl_pat, _pat_bundle = _fhir_get("Patient", {"_count": "100"})
 _query_log.append((_furl_pat, "Patient"))
 for _entry in _pat_bundle.get("entry", []):
     _pat_r = _entry.get("resource", {})
@@ -612,9 +688,8 @@ for _entry in _pat_bundle.get("entry", []):
     if not _pid or _pid in _seen_patients:
         continue
     _age = _compute_age(_pat_r.get("birthDate", ""))
-    if _age is None or _age > 50:
+    if _age is None:
         continue
-    # Check this patient has NO diabetes condition
     if _pid in _diabetic_pids:
         continue
     _name = _pat_r.get("name", [{}])[0]
@@ -627,45 +702,71 @@ for _entry in _pat_bundle.get("entry", []):
     })
     _seen_patients.add(_pid)
 
-# Shuffle to avoid demographic clustering from sequential FHIR results
+# Shuffle to avoid insertion-order clustering
 _random.shuffle(_candidate_rows)
 
-# Select up to 10 candidates, aiming for ~3-4 from each group
-_group_counts = {"t1d": 0, "t2d": 0, "no_diabetes": 0}
-_group_limits = {"t1d": 4, "t2d": 4, "no_diabetes": 4}
-# First pass: take up to limit from each group
+# Stratified selection: ensure diversity across condition groups AND complexity
+# Pre-screen a subset of diabetic patients for HbA1c to find control variation
+_screened = {"t1d_good": [], "t1d_poor": [], "t2d_good": [], "t2d_poor": [], "no_diabetes": []}
 for _row in _candidate_rows:
-    _g = _row["_group"]
-    if _group_counts[_g] >= _group_limits[_g]:
+    if _row["_group"] == "no_diabetes":
+        _screened["no_diabetes"].append(_row)
         continue
-    _group_counts[_g] += 1
-    _row["Case #"] = len(_final_candidates) + 1
-    _final_candidates.append(_row)
-    if len(_final_candidates) >= 10:
+    # Quick HbA1c check for stratification
+    try:
+        _, _a1c_r = _search_observations(_row["_patient_id"], "4548-4", max_results=1)
+        _a1c_val = _a1c_r["results"][0]["value"] if _a1c_r["results"] else None
+    except Exception:
+        _a1c_val = None
+    _row["_a1c"] = _a1c_val
+    _ctrl = "poor" if (_a1c_val is not None and _a1c_val > 7.5) else "good"
+    _key = f"{_row['_group']}_{_ctrl}"
+    _screened[_key].append(_row)
+    # Stop screening once we have enough candidates in each bucket
+    if all(len(v) >= 3 for v in _screened.values() if v is not None):
         break
-# Second pass: fill remaining slots
-if len(_final_candidates) < 10:
-    for _row in _candidate_rows:
-        if _row in _final_candidates:
-            continue
-        _row["Case #"] = len(_final_candidates) + 1
-        _final_candidates.append(_row)
-        if len(_final_candidates) >= 10:
+
+# Build final pool: 2 T1D, 3 T2D, 2 no-DM, aiming for mix of control levels
+_picks = []
+# T1D: 1 with good control, 1 with poor control
+for _bucket in ["t1d_poor", "t1d_good"]:
+    if _screened[_bucket]:
+        _picks.append(_screened[_bucket][0])
+# T2D: 1-2 with good control, 1-2 with poor control
+for _bucket in ["t2d_poor", "t2d_good"]:
+    for _p in _screened[_bucket][:2]:
+        _picks.append(_p)
+        if len(_picks) >= 5:
             break
+# No-DM: 2 controls
+for _p in _screened["no_diabetes"][:2]:
+    _picks.append(_p)
+
+# Fill remaining slots from any group if needed
+if len(_picks) < 8:
+    for _row in _candidate_rows:
+        if _row not in _picks:
+            _picks.append(_row)
+            if len(_picks) >= 8:
+                break
+
+# Shuffle final order
+_random.shuffle(_picks)
+for _i, _row in enumerate(_picks):
+    _row["Case #"] = _i + 1
+_final_candidates = _picks
 
 for _q, _rtype in _query_log:
     _show_query(_q, _rtype)
 
 display(Markdown(
     "## Your Patient Candidates\n\n"
-    "These working-age adults (age ≤ 50) were drawn from a cohort of 1,027 synthetic "
-    "patients. The pool includes patients with diabetes *and* patients without it — "
-    "not every patient with metabolic risk factors has diabetes.\n\n"
+    "These patients were drawn from a cohort of 1,027 synthetic patients. The pool "
+    "includes patients with diabetes (Type 1 and Type 2) *and* patients without "
+    "diabetes — not every patient has the same level of management complexity.\n\n"
     "The game tracks both your **accuracy** (% correct) and **number of queries**. "
     "In real medicine, you'd look at everything — but in agent design, every query "
-    "costs time, tokens, and money.\n\n"
-    "*The cohort spans 6 canonical phenotypes along the diabetes–CKD spectrum "
-    "(see the data overview above).*"
+    "costs time, tokens, and money."
 ))
 _cdf = pd.DataFrame(_final_candidates)[["Case #", "Name", "Age", "Gender"]]
 display(HTML(_cdf.to_html(index=False)))
@@ -705,36 +806,189 @@ else:
 
     display(Markdown(
         f"## Working {num_cases} Cases\n\n"
-        "You'll classify these patients one at a time.\n\n"
+        "You'll assess each patient's diabetes management complexity.\n\n"
         "| | Case | Patient | Age | Gender |\n"
         "|-|------|---------|-----|--------|\n"
         f"{_case_rows}\n"
         f"**Starting with Case 1:** {_state['patient_label']}\n\n"
-        "Use **Step 5** below — query the FHIR server, then classify when ready."
+        "Use **Step 5** to investigate (FHIR queries), then **Step 5b** to classify."
     ))
 """.strip()
 
 
 INVESTIGATE = r"""
-#@title Step 5: Investigate and classify (change dropdown → click Run → repeat)
-action = "Get demographics" #@param ["Get demographics", "Get problem list", "Get C-peptide", "Get HbA1c", "Get BMI", "Get eGFR", "Get treatment regimen", "Get encounters", "— CLASSIFY —", "Classify: Type 1", "Classify: Type 2", "Classify: No diabetes"]
+#@title Step 5: Investigate (change dropdown → click Run → repeat)
+query = "Get problem list" #@param ["Get problem list", "Get HbA1c", "Get eGFR", "Get UACR", "Get medications", "Get C-peptide", "Get BMI", "Get creatinine", "Get demographics", "Get encounters"]
 
 if _state["patient_id"] is None:
     display(Markdown("**Run Step 4 first.**"))
 elif _state["current_case_idx"] >= _state["num_cases"]:
     display(Markdown("**All cases complete.** See your results in Step 6."))
-elif action == "— CLASSIFY —":
-    display(Markdown(
-        "**Pick a classification** — select *Classify: Type 1*, *Classify: Type 2*, "
-        "or *Classify: No diabetes* from the dropdown, then click Run."
-    ))
-elif action.startswith("Classify: "):
-    # ---- Classification logic ----
-    classification = action.replace("Classify: ", "")
+else:
+    _pid = _state["patient_id"]
+    _case_num = _state["current_case_idx"] + 1
+    _total = _state["num_cases"]
+
+    display(Markdown(f"**Case {_case_num} of {_total}:** {_state['patient_label']}"))
+
+    if query == "Get demographics":
+        _furl, _result = _get_patient(_pid)
+        _show_query(_furl, "Patient")
+        _state["evidence"]["demographics"] = _result
+        _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"Age {_result.get('age')}, {_result.get('gender')}"})
+        display(Markdown(
+            "### Demographics\n\n"
+            "| Field | Value |\n|-------|-------|\n"
+            f"| Name | {_result.get('name')} |\n"
+            f"| Age | {_result.get('age')} |\n"
+            f"| Gender | {_result.get('gender')} |\n"
+            f"| Date of Birth | {_result.get('birthDate')} |"
+        ))
+
+    elif query == "Get problem list":
+        _furl, _result = _search_all_conditions(_pid)
+        _show_query(_furl, "Condition")
+        _state["evidence"]["conditions"] = _result["results"]
+        _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"{len(_result['results'])} conditions found"})
+        if _result["results"]:
+            _rows_md = "\n".join(f"| {r['condition']} | {r['code']} | {r['clinical_status']} |" for r in _result["results"][:12])
+            display(Markdown(f"### Problem List\n\n| Condition | SNOMED Code | Status |\n|-----------|-------------|--------|\n{_rows_md}"))
+        else:
+            display(Markdown("### Problem List\n\n*No conditions found for this patient.*"))
+
+    elif query == "Get HbA1c":
+        _furl, _result = _search_observations(_pid, "4548-4")
+        _show_query(_furl, "Observation")
+        _latest = _result["results"][0] if _result["results"] else None
+        _state["evidence"]["hba1c"] = {"bundle": _result, "latest": _latest}
+        if _latest:
+            _note = f"{_latest.get('value', 'N/A')} {_latest.get('unit', '')}"
+            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"HbA1c: {_note}"})
+            display(Markdown(f"### HbA1c\n\nGlycemic control over ~3 months. A key complicating factor when elevated.\n\n| Value | Unit | Date |\n|-------|------|------|\n| {_latest.get('value', 'N/A')} | {_latest.get('unit', '')} | {_latest.get('date', 'N/A')} |\n\n*Target: < 7.0% · Suboptimal: > 7.5% · Poor: > 9.0%*"))
+        else:
+            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": "HbA1c: no results"})
+            display(Markdown("### HbA1c\n\n*No HbA1c results found for this patient.*"))
+
+    elif query == "Get eGFR":
+        _furl, _result = _search_observations(_pid, "33914-3")
+        _show_query(_furl, "Observation")
+        _latest = _result["results"][0] if _result["results"] else None
+        _state["evidence"]["egfr"] = {"bundle": _result, "latest": _latest}
+        if _latest:
+            _note = f"{_latest.get('value', 'N/A')} {_latest.get('unit', '')}"
+            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"eGFR: {_note}"})
+            display(Markdown(f"### eGFR (Estimated Glomerular Filtration Rate)\n\nKidney function — a key complicating factor when reduced.\n\n| Value | Unit | Date |\n|-------|------|------|\n| {_latest.get('value', 'N/A')} | {_latest.get('unit', '')} | {_latest.get('date', 'N/A')} |\n\n*Normal: ≥ 90 · Mildly decreased: 60–89 · CKD Stage 3: 30–59 · CKD Stage 4: 15–29*"))
+        else:
+            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": "eGFR: no results"})
+            display(Markdown("### eGFR\n\n*No eGFR results found for this patient.*"))
+
+    elif query == "Get UACR":
+        _furl, _result = _search_observations(_pid, "14959-1")
+        _show_query(_furl, "Observation")
+        _latest = _result["results"][0] if _result["results"] else None
+        _state["evidence"]["uacr"] = {"bundle": _result, "latest": _latest}
+        if _latest:
+            _note = f"{_latest.get('value', 'N/A')} {_latest.get('unit', '')}"
+            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"UACR: {_note}"})
+            display(Markdown(f"### UACR (Urine Albumin-to-Creatinine Ratio)\n\nDetects early kidney damage that eGFR can miss.\n\n| Value | Unit | Date |\n|-------|------|------|\n| {_latest.get('value', 'N/A')} | {_latest.get('unit', '')} | {_latest.get('date', 'N/A')} |\n\n*Normal: < 30 mg/g · Microalbuminuria: 30–299 mg/g · Macroalbuminuria: ≥ 300 mg/g*"))
+        else:
+            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": "UACR: no results"})
+            display(Markdown("### UACR\n\n*No UACR results found for this patient.*"))
+
+    elif query == "Get medications":
+        _furl, _result = _search_medications(_pid)
+        _show_query(_furl, "MedicationRequest")
+        _state["evidence"]["treatment_regimen"] = _result["results"]
+        _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"{len(_result['results'])} medications"})
+        if _result["results"]:
+            _rows_md = "\n".join(f"| {r['medication']} | {r['status']} | {r.get('authoredOn', 'N/A')} |" for r in _result["results"][:10])
+            display(Markdown(f"### Medications\n\nRegimen context — complexity of treatment, not a direct category driver.\n\n| Medication | Status | Date |\n|------------|--------|------|\n{_rows_md}"))
+        else:
+            display(Markdown("### Medications\n\n*No medications found.*"))
+
+    elif query == "Get C-peptide":
+        _furl, _result = _search_observations(_pid, "1986-9")
+        _show_query(_furl, "Observation")
+        _latest = _result["results"][0] if _result["results"] else None
+        _state["evidence"]["c_peptide"] = {"bundle": _result, "latest": _latest}
+        if _latest:
+            _note = f"{_latest.get('value', 'N/A')} {_latest.get('unit', '')}"
+            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"C-peptide: {_note}"})
+            display(Markdown(f"### C-peptide\n\nDiabetes type context — low values indicate Type 1 (beta-cell destruction).\n\n| Value | Unit | Date |\n|-------|------|------|\n| {_latest.get('value', 'N/A')} | {_latest.get('unit', '')} | {_latest.get('date', 'N/A')} |\n\n*Normal range: 1.1–4.4 ng/mL*"))
+        else:
+            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": "C-peptide: no results"})
+            display(Markdown("### C-peptide\n\n*No C-peptide results found for this patient.*"))
+
+    elif query == "Get BMI":
+        _furl, _result = _search_observations(_pid, "39156-5")
+        _show_query(_furl, "Observation")
+        _latest = _result["results"][0] if _result["results"] else None
+        _state["evidence"]["bmi"] = {"bundle": _result, "latest": _latest}
+        if _latest:
+            _note = f"{_latest.get('value', 'N/A')} {_latest.get('unit', '')}"
+            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"BMI: {_note}"})
+            display(Markdown(f"### BMI\n\nMetabolic context.\n\n| Value | Unit | Date |\n|-------|------|------|\n| {_latest.get('value', 'N/A')} | {_latest.get('unit', '')} | {_latest.get('date', 'N/A')} |\n\n*Normal: 18.5–25 · Overweight: 25–30 · Obese: > 30*"))
+        else:
+            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": "BMI: no results"})
+            display(Markdown("### BMI\n\n*No BMI results found for this patient.*"))
+
+    elif query == "Get creatinine":
+        _furl, _result = _search_observations(_pid, "2160-0")
+        _show_query(_furl, "Observation")
+        _latest = _result["results"][0] if _result["results"] else None
+        _state["evidence"]["creatinine"] = {"bundle": _result, "latest": _latest}
+        if _latest:
+            _note = f"{_latest.get('value', 'N/A')} {_latest.get('unit', '')}"
+            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"Creatinine: {_note}"})
+            display(Markdown(f"### Serum Creatinine\n\nKidney function marker — correlates with eGFR.\n\n| Value | Unit | Date |\n|-------|------|------|\n| {_latest.get('value', 'N/A')} | {_latest.get('unit', '')} | {_latest.get('date', 'N/A')} |\n\n*Normal: 0.7–1.3 mg/dL*"))
+        else:
+            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": "Creatinine: no results"})
+            display(Markdown("### Serum Creatinine\n\n*No creatinine results found for this patient.*"))
+
+    elif query == "Get encounters":
+        _furl, _result = _search_encounters(_pid)
+        _show_query(_furl, "Encounter")
+        _state["evidence"]["encounters"] = _result["results"]
+        _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"{len(_result['results'])} encounters"})
+        if _result["results"]:
+            _rows_md = "\n".join(f"| {r.get('type', 'N/A')} | {r.get('class', '')} | {r.get('status', '')} | {r.get('period_start', 'N/A')} |" for r in _result["results"][:8])
+            display(Markdown(f"### Encounters\n\n| Type | Class | Status | Date |\n|------|-------|--------|------|\n{_rows_md}"))
+        else:
+            display(Markdown("### Encounters\n\n*No encounters found.*"))
+
+    display(Markdown(_render_dashboard()))
+""".strip()
+
+
+CLASSIFY = r"""
+#@title Step 5b: Classify this patient (when you're ready)
+classification = "Routine" #@param ["Routine", "Moderate complexity", "High complexity", "No diabetes"]
+
+if _state["patient_id"] is None:
+    display(Markdown("**Run Step 4 first.**"))
+elif _state["current_case_idx"] >= _state["num_cases"]:
+    display(Markdown("**All cases complete.** See your results in Step 6."))
+else:
     _queries_used = len([h for h in _state["history"] if h.get("fhir_query") != "—"])
-    _correct_answer = _state["correct_answer"]
+    _correct_answer, _factors, _details = _get_ground_truth_detail(_state["patient_id"])
     _is_correct = (classification == _correct_answer)
     _case_num = _state["current_case_idx"] + 1
+
+    # Build specific feedback based on what evidence was missed
+    _feedback_hints = []
+    _ev = _state["evidence"]
+    if not _is_correct:
+        if "conditions" not in _ev:
+            _feedback_hints.append("Did you verify whether this patient has a diabetes diagnosis?")
+        if "hba1c" not in _ev and "poor_control" in _factors:
+            _feedback_hints.append("You may want to check glycemic control (HbA1c).")
+        if "egfr" not in _ev and "reduced_kidney" in _factors:
+            _feedback_hints.append("Have you checked kidney function (eGFR)?")
+        if "uacr" not in _ev and "albuminuria" in _factors:
+            if "egfr" in _ev:
+                _feedback_hints.append("The eGFR looks preserved, but there is another kidney marker worth investigating.")
+            else:
+                _feedback_hints.append("Have you checked kidney damage markers?")
 
     _state["human_results"].append({
         "case_num": _case_num,
@@ -748,12 +1002,28 @@ elif action.startswith("Classify: "):
 
     # Immediate feedback
     if _is_correct:
-        _feedback = f"## ✓ Correct!\n\nThe answer is **{_correct_answer}**."
+        _detail_parts = []
+        if _details.get("hba1c") is not None:
+            _detail_parts.append(f"HbA1c {_details['hba1c']}%")
+        if _details.get("egfr") is not None:
+            _detail_parts.append(f"eGFR {_details['egfr']}")
+        if _details.get("uacr") is not None:
+            _detail_parts.append(f"UACR {_details['uacr']}")
+        _detail_str = " · ".join(_detail_parts) if _detail_parts else ""
+        _feedback = f"## Correct!\n\n**{_correct_answer}**"
+        if _detail_str:
+            _feedback += f" ({_detail_str})"
+        if len(_factors) > 0 and _correct_answer != "No diabetes":
+            _factor_labels = {"poor_control": "poor glycemic control (A1c > 7.5%)", "reduced_kidney": "reduced kidney function (eGFR < 60)", "albuminuria": "albuminuria (UACR ≥ 30)"}
+            _fl = [_factor_labels.get(f, f) for f in _factors]
+            _feedback += f"\n\nComplicating factors: {', '.join(_fl)}"
     else:
         _feedback = (
-            f"## ✗ Incorrect\n\n"
-            f"You answered **{classification}** — the correct answer is **{_correct_answer}**."
+            f"## Not quite\n\n"
+            f"You answered **{classification}** — the correct category is **{_correct_answer}**."
         )
+        if _feedback_hints:
+            _feedback += "\n\n**Hints:**\n" + "\n".join(f"- {h}" for h in _feedback_hints)
 
     # Progress table
     _progress_rows = ""
@@ -783,7 +1053,7 @@ elif action.startswith("Classify: "):
             f"{_progress_rows}\n"
             f"**Next — Case {_state['current_case_idx']+1}:** "
             f"{_state['patient_label']}\n\n"
-            "Change the dropdown back to a query action and keep going."
+            "Go back to **Step 5** to investigate, then return here to classify."
         ))
     else:
         # All cases done
@@ -803,114 +1073,6 @@ elif action.startswith("Classify: "):
             f"{_avg_q:.1f} avg queries**\n\n"
             "See full results in **Step 6**, then move to **Activity 2** (Step 7)."
         ))
-else:
-    # ---- Evidence gathering logic ----
-    _pid = _state["patient_id"]
-    _case_num = _state["current_case_idx"] + 1
-    _total = _state["num_cases"]
-
-    display(Markdown(f"**Case {_case_num} of {_total}:** {_state['patient_label']}"))
-
-    if action == "Get demographics":
-        _furl, _result = _get_patient(_pid)
-        _show_query(_furl, "Patient")
-        _state["evidence"]["demographics"] = _result
-        _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"Age {_result.get('age')}, {_result.get('gender')}"})
-        display(Markdown(
-            "### Demographics\n\n"
-            "| Field | Value |\n|-------|-------|\n"
-            f"| Name | {_result.get('name')} |\n"
-            f"| Age | {_result.get('age')} |\n"
-            f"| Gender | {_result.get('gender')} |\n"
-            f"| Date of Birth | {_result.get('birthDate')} |"
-        ))
-
-    elif action == "Get problem list":
-        _furl, _result = _search_all_conditions(_pid)
-        _show_query(_furl, "Condition")
-        _state["evidence"]["conditions"] = _result["results"]
-        _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"{len(_result['results'])} conditions found"})
-        if _result["results"]:
-            _rows_md = "\n".join(f"| {r['condition']} | {r['code']} | {r['clinical_status']} |" for r in _result["results"][:12])
-            display(Markdown(f"### Problem List\n\n| Condition | SNOMED Code | Status |\n|-----------|-------------|--------|\n{_rows_md}"))
-        else:
-            display(Markdown("### Problem List\n\n*No conditions found for this patient.*"))
-
-    elif action == "Get C-peptide":
-        _furl, _result = _search_observations(_pid, "1986-9")
-        _show_query(_furl, "Observation")
-        _latest = _result["results"][0] if _result["results"] else None
-        _state["evidence"]["c_peptide"] = {"bundle": _result, "latest": _latest}
-        if _latest:
-            _note = f"{_latest.get('value', 'N/A')} {_latest.get('unit', '')}"
-            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"C-peptide: {_note}"})
-            display(Markdown(f"### C-peptide\n\nDirect T1/T2 differentiator — low values indicate beta-cell destruction (Type 1).\n\n| Value | Unit | Date |\n|-------|------|------|\n| {_latest.get('value', 'N/A')} | {_latest.get('unit', '')} | {_latest.get('date', 'N/A')} |\n\n*Normal range: 1.1–4.4 ng/mL*"))
-        else:
-            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": "C-peptide: no results"})
-            display(Markdown("### C-peptide\n\n*No C-peptide results found for this patient.*"))
-
-    elif action == "Get HbA1c":
-        _furl, _result = _search_observations(_pid, "4548-4")
-        _show_query(_furl, "Observation")
-        _latest = _result["results"][0] if _result["results"] else None
-        _state["evidence"]["hba1c"] = {"bundle": _result, "latest": _latest}
-        if _latest:
-            _note = f"{_latest.get('value', 'N/A')} {_latest.get('unit', '')}"
-            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"HbA1c: {_note}"})
-            display(Markdown(f"### HbA1c\n\nGlycemic control over ~3 months — indicates severity, not type.\n\n| Value | Unit | Date |\n|-------|------|------|\n| {_latest.get('value', 'N/A')} | {_latest.get('unit', '')} | {_latest.get('date', 'N/A')} |\n\n*Target: < 7.0% · Poor control: > 7.5%*"))
-        else:
-            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": "HbA1c: no results"})
-            display(Markdown("### HbA1c\n\n*No HbA1c results found for this patient.*"))
-
-    elif action == "Get BMI":
-        _furl, _result = _search_observations(_pid, "39156-5")
-        _show_query(_furl, "Observation")
-        _latest = _result["results"][0] if _result["results"] else None
-        _state["evidence"]["bmi"] = {"bundle": _result, "latest": _latest}
-        if _latest:
-            _note = f"{_latest.get('value', 'N/A')} {_latest.get('unit', '')}"
-            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"BMI: {_note}"})
-            display(Markdown(f"### BMI\n\nInsulin resistance context — higher BMI leans toward T2, but not definitive.\n\n| Value | Unit | Date |\n|-------|------|------|\n| {_latest.get('value', 'N/A')} | {_latest.get('unit', '')} | {_latest.get('date', 'N/A')} |\n\n*Overweight: 25–30 · Obese: > 30*"))
-        else:
-            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": "BMI: no results"})
-            display(Markdown("### BMI\n\n*No BMI results found for this patient.*"))
-
-    elif action == "Get eGFR":
-        _furl, _result = _search_observations(_pid, "33914-3")
-        _show_query(_furl, "Observation")
-        _latest = _result["results"][0] if _result["results"] else None
-        _state["evidence"]["egfr"] = {"bundle": _result, "latest": _latest}
-        if _latest:
-            _note = f"{_latest.get('value', 'N/A')} {_latest.get('unit', '')}"
-            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"eGFR: {_note}"})
-            display(Markdown(f"### eGFR\n\nKidney function / CKD staging — complications context.\n\n| Value | Unit | Date |\n|-------|------|------|\n| {_latest.get('value', 'N/A')} | {_latest.get('unit', '')} | {_latest.get('date', 'N/A')} |\n\n*Normal: > 90 · CKD Stage 3: 30–59 · CKD Stage 4: 15–29*"))
-        else:
-            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": "eGFR: no results"})
-            display(Markdown("### eGFR\n\n*No eGFR results found for this patient.*"))
-
-    elif action == "Get treatment regimen":
-        _furl, _result = _search_medications(_pid)
-        _show_query(_furl, "MedicationRequest")
-        _state["evidence"]["treatment_regimen"] = _result["results"]
-        _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"{len(_result['results'])} medications"})
-        if _result["results"]:
-            _rows_md = "\n".join(f"| {r['medication']} | {r['status']} | {r.get('authoredOn', 'N/A')} |" for r in _result["results"][:10])
-            display(Markdown(f"### Treatment Regimen\n\nInsulin-only suggests T1; oral agents (metformin, sulfonylureas) suggest T2.\n\n| Medication | Status | Date |\n|------------|--------|------|\n{_rows_md}"))
-        else:
-            display(Markdown("### Treatment Regimen\n\n*No medications found.*"))
-
-    elif action == "Get encounters":
-        _furl, _result = _search_encounters(_pid)
-        _show_query(_furl, "Encounter")
-        _state["evidence"]["encounters"] = _result["results"]
-        _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"{len(_result['results'])} encounters"})
-        if _result["results"]:
-            _rows_md = "\n".join(f"| {r.get('type', 'N/A')} | {r.get('class', '')} | {r.get('status', '')} | {r.get('period_start', 'N/A')} |" for r in _result["results"][:8])
-            display(Markdown(f"### Encounters\n\n| Type | Class | Status | Date |\n|------|-------|--------|------|\n{_rows_md}"))
-        else:
-            display(Markdown("### Encounters\n\n*No encounters found.*"))
-
-    display(Markdown(_render_dashboard()))
 """.strip()
 
 
@@ -949,20 +1111,20 @@ else:
 
 PROMPT_EDITOR = r"""
 #@title Step 7: Write your AI prompt
-agent_prompt = "You are a clinical data assistant classifying diabetes patients using FHIR queries. Classify each patient as Type 1 diabetes, Type 2 diabetes, or No diabetes. Use the minimum queries needed to reach confidence. Prefer direct evidence (C-peptide, medications) over indirect (BMI)." #@param {type:"string"}
+agent_prompt = "Classify this patient's diabetes management complexity." #@param {type:"string"}
 
 _state["agent_prompt"] = agent_prompt
 
 display(Markdown(
     "## Activity 2: Write Your AI Prompt\n\n"
-    "This prompt tells the AI agent how to approach the classification task. "
+    "This prompt tells the AI agent how to approach the complexity assessment. "
     f"It will use this prompt for all {_state.get('num_cases', '?')} cases.\n\n"
     f"**Your prompt:**\n\n> {agent_prompt[:400]}{'...' if len(agent_prompt) > 400 else ''}\n\n"
     "**Ideas to try:**\n"
-    "- Emphasize efficiency: *\"never query more than 3 tools\"*\n"
-    "- Change priorities: *\"always start with C-peptide\"*\n"
-    "- Add constraints: *\"ignore BMI — it's not diagnostic\"*\n"
-    "- Change persona: *\"you are an endocrinologist\"*\n\n"
+    "- Emphasize efficiency: *\"use no more than 4 queries per patient\"*\n"
+    "- Change priorities: *\"always check UACR — eGFR alone misses early damage\"*\n"
+    "- Add constraints: *\"check conditions first to rule out non-diabetic patients\"*\n"
+    "- Change persona: *\"you are a nephrologist reviewing a diabetes panel\"*\n\n"
     "Run **Step 8** to let the agent work. You can come back here, "
     "edit the prompt, and re-run Step 8 to compare different prompts."
 ))
@@ -999,20 +1161,21 @@ else:
 
         _agent_question = (
             f"Review patient {_agent_pid} ({_agent_label}). "
-            "Classify as Type 1 diabetes, Type 2 diabetes, or no diabetes. "
+            "Assess this patient's diabetes management complexity. "
+            "Categories: Routine, Moderate complexity, High complexity, or No diabetes. "
             "Use the FHIR query tools. Cite specific findings."
         )
         _agent_system = (
             "You are a clinical data assistant querying a FHIR server with synthetic "
             "patient data. You work as an agent: query one tool at a time, reason about "
             "the result, then decide your next step.\n\n"
-            "CLASSIFICATION: Type 1 diabetes / Type 2 diabetes / No diabetes\n\n"
-            "The patient pool includes metabolic syndrome patients who do NOT have "
-            "diabetes. Key signals: normal C-peptide (1.1–4.4 ng/mL), no diabetes "
-            "medications, normal HbA1c (< 6.5%) = No diabetes.\n\n"
+            "CLASSIFICATION: Routine / Moderate complexity / High complexity / No diabetes\n\n"
+            "The patient pool includes patients with diabetes (Type 1 and Type 2) and "
+            "patients without diabetes. Complexity depends on glycemic control, kidney "
+            "function, and kidney damage markers.\n\n"
             "After EACH tool result, state your current assessment and next step.\n"
             "STOP when confident. Be concise.\n\n"
-            "STUDENT PROMPT (follow this guidance):\n" + _prompt
+            "YOUR INSTRUCTIONS (from the student):\n" + _prompt
         )
 
         _agent_messages = [{"role": "user", "content": _agent_question}]
@@ -1056,15 +1219,18 @@ else:
                 })
             _agent_messages.append({"role": "user", "content": _tool_results})
 
-        # Extract classification
+        # Extract classification — check specific categories before "no diabetes"
+        # to avoid false-matching phrases like "no diabetes complications"
         _agent_classification = "Unclear"
         _fl = _final_text.lower()
-        if "no diabetes" in _fl:
+        if "high complexity" in _fl or "high-complexity" in _fl:
+            _agent_classification = "High complexity"
+        elif "moderate complexity" in _fl or "moderate-complexity" in _fl:
+            _agent_classification = "Moderate complexity"
+        elif "routine" in _fl:
+            _agent_classification = "Routine"
+        elif "no diabetes" in _fl:
             _agent_classification = "No diabetes"
-        elif "type 1" in _fl:
-            _agent_classification = "Type 1"
-        elif "type 2" in _fl:
-            _agent_classification = "Type 2"
 
         _correct_answer = _get_ground_truth(_agent_pid)
         _is_correct = (_agent_classification == _correct_answer)
@@ -1188,11 +1354,12 @@ else:
         "1. **Accuracy vs efficiency:** Who was more accurate? Who used fewer queries?\n"
         "2. **Prompt impact:** How did changing your prompt affect the AI's accuracy "
         "and query count? Which prompt worked best?\n"
-        "3. **Strategy differences:** Did you and the AI query the same resources? "
-        "In what order?\n"
-        "4. **The 'no diabetes' trap:** Which patients were hardest? What evidence "
-        "distinguishes metabolic syndrome from actual diabetes?\n"
-        "5. **FHIR resource value:** Which resource type mattered most?\n"
+        "3. **The UACR surprise:** Did you check UACR for every patient? What happened "
+        "when you skipped it? What does this teach about early kidney damage screening?\n"
+        "4. **The 'no diabetes' trap:** Which patients were hardest? Did you verify the "
+        "diagnosis before jumping into labs?\n"
+        "5. **eGFR vs UACR:** Some patients look fine by eGFR but have elevated UACR. "
+        "Why do clinical guidelines (KDIGO, ADA) recommend checking both?\n"
         "6. **The agent loop:** *observe → decide → act → update → repeat.* "
         "What makes the 'when to stop' decision hard?\n"
     ))
@@ -1204,14 +1371,13 @@ else:
 # ===================================================================
 
 INTRO = [
-    "# You Are the Agent: A Clinical Classification Game\n",
+    "# You Are the Agent: Diabetes Management Complexity Assessment\n",
     "\n",
     "This is a game designed to teach you two things: **how AI agents work** and "
     "**how FHIR queries access clinical data**.\n",
     "\n",
-    "You'll classify synthetic patients as Type 1 diabetes, Type 2 diabetes, or "
-    "no diabetes. Your tools are **FHIR queries** — structured requests to an "
-    "electronic health record server.\n",
+    "You'll assess synthetic patients' **diabetes management complexity** — from "
+    "Routine to High — by querying a FHIR server for clinical evidence.\n",
     "\n",
     "**The game has two activities:**\n",
     "\n",
@@ -1254,53 +1420,72 @@ WHAT_YOULL_PRACTICE = [
 CLINICAL_SCENARIO = [
     "## The Clinical Scenario\n",
     "\n",
-    "**Setting:** You are an informatics fellow reviewing a cohort of working-age adults "
-    "(age ≤ 50) with a diabetes diagnosis in a synthetic FHIR server.\n",
+    "**Setting:** You are an informatics fellow reviewing a cohort of patients in a "
+    "synthetic FHIR server to assess their diabetes management complexity.\n",
     "\n",
-    "**Problem:** Not every patient with metabolic risk factors has diabetes. The pool "
-    "includes patients with diabetes (Type 1 and Type 2) *and* patients with metabolic "
-    "syndrome who do not have diabetes. Accurate classification matters for management.\n",
+    "**Problem:** Not all diabetic patients need the same level of care. Some are "
+    "well-controlled with simple regimens (Routine). Others have complicating factors — "
+    "poor glycemic control, kidney damage, or both — that demand closer attention. "
+    "And some patients in the pool don't have diabetes at all.\n",
     "\n",
-    "**Your task:** Query the FHIR server and decide:\n",
-    "- **Type 1 diabetes** — evidence supports autoimmune diabetes\n",
-    "- **Type 2 diabetes** — evidence supports insulin resistance pattern\n",
-    "- **No diabetes** — metabolic risk factors but no actual diabetes\n",
+    "**Your task:** Query the FHIR server and classify each patient:\n",
+    "- **Routine** — diabetes present, well-controlled, no significant complications\n",
+    "- **Moderate complexity** — one complicating factor present\n",
+    "- **High complexity** — multiple complicating factors or an extreme finding\n",
+    "- **No diabetes** — no diabetes diagnosis found\n",
     "\n",
-    "The game tracks both **accuracy** and **query count**.\n",
+    "No single query can resolve any category. You need to check multiple data types.\n",
+]
+
+CLINICAL_CONTEXT_CARD = [
+    "## Clinical Reference Card\n",
     "\n",
-    "**Key evidence to look for:**\n",
-    "- **C-peptide** (low → T1, normal/high → T2) — the most direct differentiator (`Observation` LOINC `1986-9`)\n",
-    "- **Treatment regimen** (insulin-only vs. oral agents) — strong T1/T2 signal (`MedicationRequest`)\n",
-    "- **BMI** (lower → T1, higher → T2, not definitive) — context, not proof (`Observation` LOINC `39156-5`)\n",
-    "- **HbA1c** (glycemic control) — tells you severity, not type (`Observation` LOINC `4548-4`)\n",
-    "- **eGFR** (kidney function) — complications and CKD staging (`Observation` LOINC `33914-3`)\n",
-    "- **Diagnosis context** — existing conditions and comorbidities (`Condition`)\n",
+    "Use this as a reference throughout the activity. You don't need to memorize these "
+    "values — just refer back here when interpreting query results.\n",
+    "\n",
+    "### Complicating Factors (each counts toward complexity)\n",
+    "\n",
+    "| Factor | Measure | Threshold | What It Means |\n",
+    "|--------|---------|-----------|---------------|\n",
+    "| Poor glycemic control | **HbA1c** | > 7.5% | Blood sugar not well managed over the past ~3 months |\n",
+    "| Reduced kidney function | **eGFR** | < 60 mL/min | Kidneys are working below ~60% capacity (CKD stage 3+) |\n",
+    "| Early kidney damage | **UACR** | ≥ 30 mg/g | Protein leaking into urine — a sign of kidney damage that eGFR can miss |\n",
+    "\n",
+    "### How to Classify\n",
+    "\n",
+    "| Category | Rule |\n",
+    "|----------|------|\n",
+    "| **No diabetes** | Patient has no diabetes diagnosis (no T1D or T2D in their conditions) |\n",
+    "| **Routine** | Has diabetes + zero complicating factors above |\n",
+    "| **Moderate complexity** | Has diabetes + exactly one complicating factor |\n",
+    "| **High complexity** | Has diabetes + two or more complicating factors |\n",
+    "\n",
+    "**Extreme findings** (automatic High regardless of other factors):\n",
+    "- eGFR < 30 (severe kidney disease)\n",
+    "- UACR ≥ 300 mg/g (macroalbuminuria)\n",
+    "\n",
+    "### Why This Matters Clinically\n",
+    "\n",
+    "- **HbA1c** reflects average blood sugar. The ADA target is < 7.0% for most adults. "
+    "Above 7.5% indicates the current treatment isn't working well enough.\n",
+    "- **eGFR** estimates how well the kidneys filter waste. Below 60 means medications "
+    "may need dose adjustments and specialist referral may be warranted.\n",
+    "- **UACR** catches early kidney damage that eGFR misses. The kidneys can look fine "
+    "by eGFR (≥ 60) while already leaking protein — a sign of early diabetic nephropathy. "
+    "This is why clinical guidelines (KDIGO, ADA) recommend checking BOTH.\n",
+    "- **Medications** provide context but are not a direct complexity driver. A patient "
+    "on a complex regimen who is well-controlled with healthy kidneys is still Routine.\n",
 ]
 
 ABOUT_THE_DATA = [
-    "## About the Data: A Purpose-Built Synthetic Cohort\n",
+    "## About the Data\n",
     "\n",
-    "The patient data in this exercise was created by **Joel Saltz** specifically for this "
-    "course. It is a cohort of **1,027 synthetic patients** spanning six canonical phenotypes "
-    "along the diabetes–CKD spectrum:\n",
+    "The patient data is a cohort of **1,027 synthetic patients** loaded into a **FHIR R4 "
+    "server**. The cohort includes patients with Type 1 diabetes, Type 2 diabetes, and "
+    "patients without diabetes. Variables are clinically coupled — lab values, medications, "
+    "and conditions are internally consistent for each patient.\n",
     "\n",
-    "| # | Phenotype | Key Features |\n",
-    "|---|-----------|-------------|\n",
-    "| 1 | **Metabolic syndrome** | **No diabetes**, no CKD — high BMI, borderline HbA1c, normal C-peptide, no diabetes meds |\n",
-    "| 2 | Early Type 2 diabetes | No CKD |\n",
-    "| 3 | Type 2 diabetes with obesity | Early CKD |\n",
-    "| 4 | Advanced Type 2 diabetes | Moderate CKD |\n",
-    "| 5 | Type 1 diabetes | Early nephropathy |\n",
-    "| 6 | Type 1 diabetes, poor control | With CKD |\n",
-    "\n",
-    "Variables are **clinically coupled** — for example, C-peptide tracks diabetes type and "
-    "duration, HbA1c correlates with glucose via the ADAG equation, and renal chemistry is "
-    "internally consistent. Each phenotype has an age anchor and demographic variability, so "
-    "patients within a phenotype are similar but not identical.\n",
-    "\n",
-    "The data is loaded into a **FHIR R4 server**, so you query it the same way you would "
-    "query real clinical data. Synthetic data generation is a topic you may explore in a "
-    "future session.\n",
+    "You query it the same way you would query real clinical data.\n",
 ]
 
 TOOLKIT = [
@@ -1309,19 +1494,18 @@ TOOLKIT = [
     "Each tool is a **FHIR query** — a structured request to a specific resource endpoint. "
     "Choosing WHICH tool to use next is a clinical reasoning decision.\n",
     "\n",
-    "| Tool | FHIR Query | Clinical Reasoning |\n",
-    "|------|------------|--------------------|\n",
-    "| Get demographics | `GET /Patient/{id}` | Age at onset — younger leans toward T1 |\n",
-    "| Get problem list | `GET /Condition?subject=...` | Existing diagnoses, comorbidities |\n",
-    "| Get C-peptide | `GET /Observation?code=1986-9` | **Direct T1/T2 differentiator** — low = beta-cell destruction |\n",
-    "| Get HbA1c | `GET /Observation?code=4548-4` | Glycemic control (severity, not type) |\n",
-    "| Get BMI | `GET /Observation?code=39156-5` | Insulin resistance context |\n",
-    "| Get eGFR | `GET /Observation?code=33914-3` | Kidney function / CKD staging |\n",
-    "| Get treatment regimen | `GET /MedicationRequest?subject=...` | Insulin-only vs oral agents |\n",
+    "| Tool | FHIR Query | What It Tells You |\n",
+    "|------|------------|-------------------|\n",
+    "| Get problem list | `GET /Condition?subject=...` | **Verify diabetes diagnosis exists** — essential first step |\n",
+    "| Get HbA1c | `GET /Observation?code=4548-4` | Glycemic control — is it above 7.5%? |\n",
+    "| Get eGFR | `GET /Observation?code=33914-3` | Kidney function — is it below 60? |\n",
+    "| Get UACR | `GET /Observation?code=14959-1` | Early kidney damage — is it ≥ 30 mg/g? |\n",
+    "| Get medications | `GET /MedicationRequest?subject=...` | Regimen context (not a direct category driver) |\n",
+    "| Get C-peptide | `GET /Observation?code=1986-9` | Diabetes type context (T1 vs T2) |\n",
+    "| Get demographics | `GET /Patient/{id}` | Patient context (age, gender) |\n",
+    "| Get BMI | `GET /Observation?code=39156-5` | Metabolic context |\n",
+    "| Get creatinine | `GET /Observation?code=2160-0` | Kidney function (correlates with eGFR) |\n",
     "| Get encounters | `GET /Encounter?subject=...` | Care pattern context |\n",
-    "\n",
-    "**Coding systems:** SNOMED CT for diagnoses (46635009 = T1DM, 44054006 = T2DM) · "
-    "LOINC for labs (4548-4 = HbA1c, 1986-9 = C-peptide, 39156-5 = BMI, 33914-3 = eGFR)\n",
     "\n",
     "> In Activity 2, the AI agent has **exactly these same tools**. The difference is "
     "the prompt you give it.\n",
@@ -1353,35 +1537,37 @@ API_KEY_SETUP = [
 ACTIVITY1_INTRO = [
     "## Activity 1: You Are the Agent\n",
     "\n",
-    "**Everything happens in Step 5 below.** The dropdown has two sections:\n",
+    "Two cells below work together:\n",
     "\n",
-    "1. **Query actions** (top) — run FHIR queries to gather evidence\n",
-    "2. **Classify actions** (bottom) — submit your answer when ready\n",
+    "1. **Step 5 — Investigate:** Run FHIR queries to gather evidence (re-run as many times as you want)\n",
+    "2. **Step 5b — Classify:** Submit your complexity assessment when ready\n",
     "\n",
-    "For each case: pick queries, run as many as you want, then select a "
-    "*Classify* option to submit your answer. You get immediate feedback — "
-    "right or wrong, no take-backs. The next case loads automatically. "
-    "Keep running the same cell for all your cases.\n",
+    "For each case: investigate with Step 5, then classify with Step 5b. You get "
+    "immediate feedback — right or wrong, with hints about what you may have missed. "
+    "The next case loads automatically.\n",
 ]
 
 INVESTIGATE_INTRO = [
-    "## Investigate and Classify\n",
+    "## Investigate\n",
     "\n",
-    "Each time you run the cell below, you execute **one action** — either a FHIR "
-    "query or a classification. Change the **action dropdown** and click Run.\n",
+    "Each time you run the cell below, you execute **one FHIR query**. Change the "
+    "**query dropdown** and click Run.\n",
     "\n",
-    "**Query actions** show:\n",
+    "Each query shows:\n",
     "- The **FHIR request** that was made\n",
     "- The **results** with clinical context\n",
-    "- Your **Agent Dashboard** showing collected evidence, gaps, and query log\n",
+    "- Your **Agent Dashboard** showing collected evidence and what you haven't checked yet\n",
     "\n",
-    "**Classify actions** record your answer, give immediate feedback, and load "
-    "the next case.\n",
+    "> **Run this cell as many times as you want.** Each run is one investigation step.\n",
     "\n",
-    "> **Run this cell as many times as you want.** Each run is one turn.\n",
+    "When you're ready to classify, use **Step 5b** below.\n",
+]
+
+CLASSIFY_INTRO = [
+    "## Classify\n",
     "\n",
-    "> **Note:** The problem list has been modified so that diabetes-specific diagnoses "
-    "don't give away the answer. Use labs and medications to build your case.\n",
+    "When you have enough evidence, select a complexity category and click Run. "
+    "You'll get immediate feedback including which complicating factors were present.\n",
 ]
 
 ACTIVITY2_INTRO = [
@@ -1399,7 +1585,7 @@ WRAPUP = [
     "You've experienced the core **agent loop** from two perspectives:\n",
     "\n",
     "**Activity 1** — you *were* the agent, choosing queries, weighing evidence, and "
-    "deciding when you had enough to classify.\n",
+    "deciding when you had enough to assess complexity.\n",
     "\n",
     "**Activity 2** — you were the *prompt engineer*, writing instructions that shaped "
     "how an AI agent approached the same task.\n",
@@ -1421,6 +1607,8 @@ WRAPUP = [
     "- FHIR resource choice matters — some queries are more informative than others\n",
     "- Prompt engineering directly affects agent behavior and performance\n",
     "- 'When to stop' is the hardest design decision in any agent\n",
+    "- Multiple evidence types are needed for clinical assessment — no single query answers the question\n",
+    "- Early kidney damage (UACR) can hide behind a normal-looking eGFR\n",
 ]
 
 
@@ -1432,6 +1620,7 @@ cells = [
     md_cell(INTRO),
     md_cell(WHAT_YOULL_PRACTICE),
     md_cell(CLINICAL_SCENARIO),
+    md_cell(CLINICAL_CONTEXT_CARD),
     md_cell(ABOUT_THE_DATA),
     md_cell(TOOLKIT),
     md_cell(API_KEY_SETUP),
@@ -1444,6 +1633,8 @@ cells = [
     form_cell(CHOOSE_NUM_CASES),   # Step 4
     md_cell(INVESTIGATE_INTRO),
     form_cell(INVESTIGATE),        # Step 5
+    md_cell(CLASSIFY_INTRO),
+    form_cell(CLASSIFY),           # Step 5b
     form_cell(ACTIVITY1_RESULTS),  # Step 6
 
     md_cell(ACTIVITY2_INTRO),

@@ -207,30 +207,43 @@ def main():
             p, auth_path=args.storage_state, headless=args.headless,
         )
         page = context.new_page()
+        persistent_context = None  # Track if we switched to persistent profile
 
-        if not open_colab_notebook(page, args.file_id, grant_secrets=_grant):
+        if not open_colab_notebook(page, args.file_id, grant_secrets=_grant,
+                                   playwright=p, auth_path=args.storage_state,
+                                   browser=browser):
             result["error"] = "Not signed in. Auth may have expired. Run: python auth_setup.py"
             print(json.dumps(result))
-            browser.close()
+            try:
+                browser.close()
+            except Exception:
+                pass
             sys.exit(1)
+
+        # If reauth switched to persistent context, use the new page
+        if hasattr(page, '_persistent_page'):
+            active_page = page._persistent_page
+            persistent_context = page._persistent_context
+        else:
+            active_page = page
 
         # Pre-run screenshot
         pre_path = args.output_dir / f"{args.output_prefix}_before_run.png"
-        screenshots.append(take_screenshot(page, pre_path, label="before execution"))
+        screenshots.append(take_screenshot(active_page, pre_path, label="before execution"))
 
         if not args.no_run:
-            expand_all_sections(page)
-            wait_for_runtime(page, timeout_s=60)
-            exec_success = run_all_cells(page, timeout_s=args.timeout, grant_secrets=_grant)
+            expand_all_sections(active_page)
+            wait_for_runtime(active_page, timeout_s=60)
+            exec_success = run_all_cells(active_page, timeout_s=args.timeout, grant_secrets=_grant)
             time.sleep(3)
 
             # Post-run screenshot
             post_path = args.output_dir / f"{args.output_prefix}_after_run.png"
-            screenshots.append(take_screenshot(page, post_path, label="after execution"))
+            screenshots.append(take_screenshot(active_page, post_path, label="after execution"))
 
             if args.sections:
                 section_base = args.output_dir / f"{args.output_prefix}_section.png"
-                screenshots.extend(take_sectioned_screenshots(page, section_base, num_sections=args.num_sections))
+                screenshots.extend(take_sectioned_screenshots(active_page, section_base, num_sections=args.num_sections))
 
             result["success"] = exec_success
             if not exec_success:
@@ -238,7 +251,7 @@ def main():
         else:
             if args.sections:
                 section_base = args.output_dir / f"{args.output_prefix}_section.png"
-                screenshots.extend(take_sectioned_screenshots(page, section_base, num_sections=args.num_sections))
+                screenshots.extend(take_sectioned_screenshots(active_page, section_base, num_sections=args.num_sections))
             result["success"] = True
 
         result["screenshots"] = screenshots
@@ -246,11 +259,14 @@ def main():
         if args.keep_open:
             print("Browser open for inspection. Close window or Ctrl+C to exit.", file=sys.stderr)
             try:
-                page.wait_for_event("close", timeout=300000)
+                active_page.wait_for_event("close", timeout=300000)
             except (PlaywrightTimeout, KeyboardInterrupt):
                 pass
 
-        browser.close()
+        if persistent_context:
+            persistent_context.close()
+        else:
+            browser.close()
 
     # Output JSON result to stdout
     print(json.dumps(result, indent=2))

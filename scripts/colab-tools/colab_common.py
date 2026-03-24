@@ -19,8 +19,11 @@ except ImportError:
           file=sys.stderr)
     sys.exit(1)
 
-DEFAULT_AUTH_PATH = Path.home() / ".colab-notebook-tools" / "auth.json"
+CONFIG_DIR = Path.home() / ".colab-notebook-tools"
+DEFAULT_AUTH_PATH = CONFIG_DIR / "auth.json"
+DEFAULT_BROWSER_DATA = CONFIG_DIR / "browser_data"
 COLAB_URL_TEMPLATE = "https://colab.research.google.com/drive/{file_id}"
+COLAB_URL = "https://colab.research.google.com"
 IS_MACOS = platform.system() == "Darwin"
 RUN_ALL_KEY = "Meta+F9" if IS_MACOS else "Control+F9"
 
@@ -67,6 +70,151 @@ def check_signed_in(page) -> bool:
         "a:has-text('Sign in')"
     )
     return sign_in is None
+
+
+def detect_account_chooser(page) -> bool:
+    """Detect Google's 'Choose an account' page."""
+    return "accounts.google.com" in page.url and (
+        page.query_selector("h1:has-text('Choose an account')") is not None
+        or page.query_selector("div[data-identifier]") is not None
+    )
+
+
+def handle_account_chooser(page, email="joelhsaltz@gmail.com"):
+    """Auto-click the account on Google's 'Choose an account' page.
+
+    Returns True if an account was clicked, False if the page wasn't
+    an account chooser or the account wasn't found.
+    """
+    if not detect_account_chooser(page):
+        return False
+
+    print(f"  Detected 'Choose an account' page, selecting {email}...", file=sys.stderr)
+
+    # Click the account row matching the email
+    clicked = page.evaluate(f"""() => {{
+        // Look for account row by email text or data-identifier
+        const rows = document.querySelectorAll(
+            'li[data-identifier], div[data-identifier], div[data-email]'
+        );
+        for (const row of rows) {{
+            const identifier = row.getAttribute('data-identifier') ||
+                               row.getAttribute('data-email') || '';
+            if (identifier === '{email}') {{
+                row.click();
+                return true;
+            }}
+        }}
+        // Fallback: find any element containing the email text
+        const all = document.querySelectorAll('*');
+        for (const el of all) {{
+            if (el.children.length === 0 && el.textContent.trim() === '{email}') {{
+                // Click the parent row, not the text node
+                const row = el.closest('li, div[role="link"], div[tabindex]') || el;
+                row.click();
+                return true;
+            }}
+        }}
+        return false;
+    }}""")
+
+    if clicked:
+        print(f"  Clicked account: {email}", file=sys.stderr)
+        time.sleep(3)
+    else:
+        print(f"  WARNING: Could not find account {email} on chooser page", file=sys.stderr)
+    return clicked
+
+
+# ── Auto-reauth ───────────────────────────────────────────────────────────
+
+def needs_reauth(page) -> bool:
+    """Check if the page requires re-authentication.
+
+    Detects: sign-in pages, 'Choose an account' with 'Signed out' status,
+    password entry pages.
+    """
+    url = page.url
+    if "accounts.google.com" in url:
+        return True
+    if not check_signed_in(page):
+        return True
+    return False
+
+
+def auto_reauth(playwright, auth_path=DEFAULT_AUTH_PATH,
+                browser_data=DEFAULT_BROWSER_DATA):
+    """Attempt automatic re-authentication using the persistent browser profile.
+
+    Opens the persistent browser context (which may still have a valid Google
+    session), navigates to Colab, and exports fresh cookies.
+
+    If the persistent profile's session is also expired, opens a visible browser
+    window and waits for the user to sign in — but all in one step, no separate
+    script needed.
+
+    Returns True if re-auth succeeded and new cookies were exported.
+    """
+    print("\n  Auth expired — attempting automatic re-authentication...", file=sys.stderr)
+    browser_data.mkdir(parents=True, exist_ok=True)
+
+    context = playwright.chromium.launch_persistent_context(
+        user_data_dir=str(browser_data),
+        headless=False,
+        viewport={"width": 1280, "height": 900},
+        args=["--disable-blink-features=AutomationControlled"],
+        ignore_default_args=["--enable-automation"],
+    )
+
+    page = context.pages[0] if context.pages else context.new_page()
+
+    # Navigate to Colab
+    print("  Opening Colab in persistent browser...", file=sys.stderr)
+    page.goto(COLAB_URL, wait_until="domcontentloaded", timeout=30000)
+    time.sleep(3)
+
+    # Handle "Choose an account" if it appears
+    if detect_account_chooser(page):
+        handle_account_chooser(page)
+        time.sleep(3)
+
+    # Check if we're now signed in (persistent profile may have valid session)
+    url = page.url
+    if "accounts.google.com" not in url and "ServiceLogin" not in url:
+        # We're in! Export cookies.
+        print("  Re-authenticated via persistent browser profile!", file=sys.stderr)
+        context.storage_state(path=str(auth_path))
+        print(f"  Fresh cookies exported to {auth_path}", file=sys.stderr)
+        context.close()
+        return True
+
+    # Persistent profile session also expired — need user to sign in
+    print("\n" + "=" * 60, file=sys.stderr)
+    print("  Google session expired. Please sign in to your Google", file=sys.stderr)
+    print("  account in the browser window that just opened.", file=sys.stderr)
+    print("  (This is the same browser profile used for Colab tools.)", file=sys.stderr)
+    print("=" * 60 + "\n", file=sys.stderr)
+
+    # Wait for sign-in (up to 5 minutes)
+    start = time.time()
+    while time.time() - start < 300:
+        url = page.url
+        if "accounts.google.com" not in url and "ServiceLogin" not in url:
+            break
+        time.sleep(2)
+    else:
+        print("  ERROR: Sign-in timed out after 5 minutes", file=sys.stderr)
+        context.close()
+        return False
+
+    # Navigate to Colab to capture Colab-specific cookies
+    page.goto(COLAB_URL, wait_until="domcontentloaded", timeout=30000)
+    time.sleep(3)
+
+    context.storage_state(path=str(auth_path))
+    print(f"  Fresh cookies exported to {auth_path}", file=sys.stderr)
+    context.close()
+    return True
 
 
 # ── Shadow DOM traversal ──────────────────────────────────────────────────
@@ -428,8 +576,12 @@ def create_browser_context(playwright, auth_path=DEFAULT_AUTH_PATH, headless=Fal
     return browser, context
 
 
-def open_colab_notebook(page, file_id, grant_secrets=True):
+def open_colab_notebook(page, file_id, grant_secrets=True, playwright=None,
+                        auth_path=DEFAULT_AUTH_PATH, browser=None):
     """Navigate to a Colab notebook, wait for load, check auth, handle dialogs.
+
+    If auth fails and playwright is provided, automatically re-authenticates
+    using the persistent browser profile, then retries with fresh cookies.
 
     Returns True if notebook loaded successfully, False if auth failed.
     """
@@ -440,7 +592,26 @@ def open_colab_notebook(page, file_id, grant_secrets=True):
     print("Waiting for Colab to load...", file=sys.stderr)
     wait_for_colab_load(page)
 
-    if not check_signed_in(page):
+    # Handle "Choose an account" page
+    if detect_account_chooser(page):
+        handle_account_chooser(page)
+        time.sleep(3)
+        # Check if we landed on the notebook or need re-auth
+        if "colab.research.google.com/drive/" in page.url:
+            wait_for_colab_load(page)
+        elif needs_reauth(page) and playwright:
+            return _reauth_and_retry(playwright, page, file_id, grant_secrets,
+                                     auth_path, browser)
+        elif needs_reauth(page):
+            print("ERROR: Not signed in. Auth may have expired. Run: python auth_setup.py",
+                  file=sys.stderr)
+            return False
+
+    # Check if signed in
+    if needs_reauth(page):
+        if playwright:
+            return _reauth_and_retry(playwright, page, file_id, grant_secrets,
+                                     auth_path, browser)
         print("ERROR: Not signed in. Auth may have expired. Run: python auth_setup.py",
               file=sys.stderr)
         return False
@@ -448,5 +619,92 @@ def open_colab_notebook(page, file_id, grant_secrets=True):
     handled = handle_colab_dialogs(page, grant_secrets=grant_secrets)
     for h in handled:
         print(f"  Handled dialog: {h}", file=sys.stderr)
+
+    return True
+
+
+def _reauth_and_retry(playwright, page, file_id, grant_secrets, auth_path, browser):
+    """Re-authenticate by switching to the persistent browser profile.
+
+    The persistent profile maintains Google's full auth state (not just cookies),
+    so it can authenticate where exported cookies cannot. We close the ephemeral
+    browser and reopen the notebook directly in the persistent profile.
+
+    The caller's `page` object is replaced — subsequent code should use the
+    returned page's context. Returns True/False, and the page object is modified
+    in-place to point to the re-authenticated notebook.
+    """
+    print("\n  Auth failed with exported cookies.", file=sys.stderr)
+    print("  Switching to persistent browser profile...", file=sys.stderr)
+
+    # Close the ephemeral browser
+    if browser:
+        browser.close()
+
+    # Open directly with persistent context
+    DEFAULT_BROWSER_DATA.mkdir(parents=True, exist_ok=True)
+    context = playwright.chromium.launch_persistent_context(
+        user_data_dir=str(DEFAULT_BROWSER_DATA),
+        headless=False,
+        viewport={"width": 1280, "height": 900},
+        args=["--disable-blink-features=AutomationControlled"],
+        ignore_default_args=["--enable-automation"],
+    )
+
+    new_page = context.pages[0] if context.pages else context.new_page()
+    url = COLAB_URL_TEMPLATE.format(file_id=file_id)
+    print(f"  Opening notebook in persistent browser: {url}", file=sys.stderr)
+    new_page.goto(url, wait_until="domcontentloaded", timeout=60000)
+    wait_for_colab_load(new_page)
+
+    # Handle account chooser if needed
+    if detect_account_chooser(new_page):
+        handle_account_chooser(new_page)
+        time.sleep(5)
+        wait_for_colab_load(new_page)
+
+    if needs_reauth(new_page):
+        # Persistent profile also expired — need manual sign-in
+        print("\n" + "=" * 60, file=sys.stderr)
+        print("  Google session expired. Please sign in to your Google", file=sys.stderr)
+        print("  account in the browser window that just opened.", file=sys.stderr)
+        print("=" * 60 + "\n", file=sys.stderr)
+
+        start = time.time()
+        while time.time() - start < 300:
+            current_url = new_page.url
+            if "accounts.google.com" not in current_url and "ServiceLogin" not in current_url:
+                break
+            time.sleep(2)
+        else:
+            print("  ERROR: Sign-in timed out.", file=sys.stderr)
+            context.close()
+            return False
+
+        # Navigate to the notebook after sign-in
+        new_page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        wait_for_colab_load(new_page)
+
+    if needs_reauth(new_page):
+        print("ERROR: Still not signed in after re-authentication.", file=sys.stderr)
+        context.close()
+        return False
+
+    print("  Successfully authenticated with persistent profile!", file=sys.stderr)
+
+    # Export fresh cookies for next time
+    context.storage_state(path=str(auth_path))
+    print(f"  Updated {auth_path} with fresh cookies", file=sys.stderr)
+
+    handled = handle_colab_dialogs(new_page, grant_secrets=grant_secrets)
+    for h in handled:
+        print(f"  Handled dialog: {h}", file=sys.stderr)
+
+    # Copy the new page's state into the caller's page object.
+    # Since we can't actually replace the page reference, we store the
+    # persistent context info so the caller can use it.
+    # We use a simple approach: store the new page and context on the old page.
+    page._persistent_page = new_page
+    page._persistent_context = context
 
     return True

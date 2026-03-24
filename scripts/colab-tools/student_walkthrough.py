@@ -475,7 +475,9 @@ def main():
         )
         page = context.new_page()
 
-        if not open_colab_notebook(page, args.file_id, grant_secrets=_grant):
+        if not open_colab_notebook(page, args.file_id, grant_secrets=_grant,
+                                   playwright=p, auth_path=args.storage_state,
+                                   browser=browser):
             print(json.dumps({"success": False, "error": "Not signed in"}))
             browser.close()
             sys.exit(1)

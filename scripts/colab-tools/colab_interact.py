@@ -460,7 +460,9 @@ def main():
         )
         page = context.new_page()
 
-        if not open_colab_notebook(page, args.file_id, grant_secrets=_grant):
+        if not open_colab_notebook(page, args.file_id, grant_secrets=_grant,
+                                   playwright=p, auth_path=args.storage_state,
+                                   browser=browser):
             result["error"] = "Not signed in. Run: python auth_setup.py"
             print(json.dumps(result))
             browser.close()
