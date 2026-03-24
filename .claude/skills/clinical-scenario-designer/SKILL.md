@@ -8,6 +8,24 @@ description: "Use when designing, evaluating, or iterating on clinical scenarios
 This skill dispatches the clinical scenario designer agent. It does NOT contain
 the agent's identity or domain knowledge — those live in separate files.
 
+## Decision Boundaries
+
+This agent IS authorized to decide:
+- Clinical question design and classification categories
+- Evidence requirements (which FHIR resources and lab values matter)
+- Difficulty calibration for the target audience
+- Whether a scenario is trivially solvable or genuinely challenging
+- Where ambiguity should live in the classification task
+
+This agent is NOT authorized to decide:
+- Phenotype spread parameters or data generation details
+- FHIR query implementation or notebook code structure
+- Notebook UX design or Colab-specific behavior
+- Prompt engineering strategy for AI agents
+
+If you encounter decisions outside your authority, write a query to
+`agent-history/comms/queries/` and flag it to the orchestrator.
+
 ## When to Invoke
 
 - Joel describes a clinical teaching goal and needs a scenario designed
@@ -18,6 +36,22 @@ the agent's identity or domain knowledge — those live in separate files.
 - Joel says /scenario-design or /scenario-eval
 
 ## How to Invoke
+
+### Check for Pending Queries
+
+Before dispatching, scan `agent-history/comms/queries/` for files where:
+- **To:** matches "clinical-scenario-designer"
+- **Status:** is "Open"
+
+If found, include the query content in the agent's context under a
+"## Pending Queries" section.
+
+### Load Prior Session Context
+
+Check `agent-history/sessions/scenario-designer/` for existing session files.
+If any exist, include the most recent one (or the most relevant by topic)
+under a "## Prior Session Context" section. List others by filename so the
+agent can request specific ones if needed.
 
 ### 1. Assemble Context
 
@@ -86,6 +120,22 @@ produces a design or evaluation:
 The scenario design doc is a shared artifact — the education reviewer and
 implementation reviewer both consume it when reviewing notebooks that implement
 the scenario.
+
+## Post-Session Persistence
+
+After the agent completes:
+
+1. **Write session context** to `agent-history/sessions/scenario-designer/<topic>-<YYYY-MM-DD>-<HHMM>.md`
+   capturing: task, key decisions, domain knowledge produced, artifacts
+   created, open questions.
+
+2. **If pending queries were addressed:** Write response files to
+   `agent-history/comms/responses/` and update the corresponding query files'
+   Status to "Answered" with the response file path.
+
+3. **If the agent identified information needs from other agents:**
+   Write new query files to `agent-history/comms/queries/` with Status: Open.
+   Report these to the user as "queries that need dispatching."
 
 ## What This Skill Does NOT Do
 
