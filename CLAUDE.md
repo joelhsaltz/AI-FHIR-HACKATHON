@@ -3,11 +3,14 @@
 ## Project
 
 FHIR + AI Hackathon for BMI 512 (Clinical Informatics and AI) at Stony Brook
-University. Three-session educational hackathon teaching FHIR data querying and
-AI agent patterns with Claude. The redesign shifts from code-explanation to
-"You Are the Agent" pedagogy with two activities: Activity 1 (student acts as
-agent — manual FHIR queries + immediate-feedback classification quiz) and
-Activity 2 (student writes prompts for an AI agent — repeatable, scored).
+University. Educational hackathon teaching FHIR data querying and AI agent
+patterns with Claude. Uses "You Are the Agent" pedagogy: Activity 1 (student
+acts as agent — menu-driven FHIR queries + immediate-feedback classification)
+and Activity 2 (student writes prompts for an AI agent — repeatable, scored).
+
+**Current status:** Phase 0 prototype built and verified on Vertex AI Workbench
+with live FHIR data. Open design issues: combined dropdown UI, task too simple
+(C-peptide alone differentiates), need richer multi-query scenarios.
 
 ## Repository Layout
 
@@ -343,6 +346,17 @@ Follow the governance rules in `~/.claude/CLAUDE.md`:
 - Branch naming: `codex/<topic>`
 - One open PR per repo at a time
 - Update CHANGELOG.md with every change
+
+## Google Vertex AI Colab MCP
+
+Vertex AI Workbench replaces Playwright-based Colab automation for notebook
+verification. An SSH tunnel connects `localhost:8888` to the Jupyter server on
+a `e2-standard-4` VM in `us-east4-b`, and the `mcp-jupyter` MCP server provides
+programmatic cell execution with structured output capture. A PreToolUse hook
+auto-starts the instance and tunnel before any `mcp__jupyter__*` call, and a Stop
+hook shuts it down when Claude Code exits. The full setup procedure, failure modes,
+and recovery steps are documented in the skill at `~/.claude/skills/colab-mcp/SKILL.md`.
+Trigger with: "connect to Colab", "set up Vertex AI", or `/colab-mcp`.
 
 ## Colab Notebook Tools Skill
 

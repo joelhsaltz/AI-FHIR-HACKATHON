@@ -8,6 +8,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Vertex AI Workbench verification pipeline** — replaces Playwright-based
+  Colab automation for notebook testing. SSH tunnel connects localhost:8888
+  to a Jupyter server on an e2-standard-4 VM in us-east4. The `mcp-jupyter`
+  MCP server provides programmatic cell execution with structured output
+  capture (text/HTML/Markdown instead of pixel screenshots).
+  - `setup_vertex.sh` — instance lifecycle management: fast-path check, zone
+    discovery, instance creation/start, SSH tunnel, health check
+  - `stop_vertex.sh` — instance stop + tunnel cleanup for session end
+  - Claude Code hooks: PreToolUse auto-starts instance before any
+    `mcp__jupyter__*` call; Stop hook shuts it down on exit
+  - `REQUEST_TIMEOUT=180` in MCP config for long-running cells
+  - 8 capability tests documented in `docs/vertex-ai-test-results.md`:
+    FHIR connectivity, package install, sequential execution, rich output,
+    error handling, long-running cells, kernel restart, Anthropic API,
+    real prototype execution, Colab form cell behavior
+  - 7/10 verification checklist items evaluable via MCP; 3/10 require
+    manual Colab review (ui_clarity, dashboard_readability, code_hidden)
+
+### Fixed
+
+- **Candidate pool stratification** — all cases were the same phenotype (T1D)
+  because shuffle + sequential scan was fragile. Replaced with deterministic
+  round-robin: group by `_group`, shuffle within groups, pick T1D -> T2D ->
+  no_diabetes -> repeat. Verified on Vertex AI: pool has 89 candidates
+  (46 T1D, 32 T2D, 11 no_diabetes), selection produces 4/3/3 mix.
+
+### Changed
+
+- **Documentation overhaul** — README.md, TECHNICAL.md, SPEC.md, CHANGELOG.md
+  updated to reflect current state: "You Are the Agent" redesign, Vertex AI
+  verification pipeline, Phase 0 prototype status, open design issues.
+
+### Added
+
 - **Clinical agent pipeline** — four domain-independent agents for scenario
   design, education review, implementation review, and synthetic data generation.
   - `.claude/agents/*/AGENT.md` — domain-independent agent identities (no

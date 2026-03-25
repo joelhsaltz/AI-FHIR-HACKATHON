@@ -228,6 +228,64 @@ classroom setting.
 - MCP server wrapping (potential future extension)
 - Additional clinical scenarios beyond the two defined above
 
+## Verification Pipeline
+
+### Two-Stage Verification
+
+1. **Automated (Vertex AI Workbench + Jupyter MCP):** Programmatic cell
+   execution with structured output capture (text/HTML/Markdown). A Google Cloud
+   Vertex AI Workbench instance (`fhir-hackathon-instance`, e2-standard-4) runs
+   notebook cells via SSH tunnel + Jupyter MCP. Claude Code hooks auto-start the
+   instance before MCP calls and auto-stop it on session end. Evaluates 7 of 10
+   checklist items (task complexity, case variety, FHIR visibility, feedback
+   quality, activity flow, game mechanics, clinical plausibility).
+
+2. **Manual (Instructor review in Colab):** Three visual items require Colab's
+   rendering engine: UI clarity (dropdown widgets), dashboard readability
+   (rendered HTML/CSS), code hidden (cellView: form). Instructor reviews these
+   after automated testing passes.
+
+### Why Vertex AI Replaced Playwright
+
+The original pipeline used Playwright browser automation to open notebooks in
+Colab, run cells, and take screenshots. This was replaced due to:
+- Auth expiry (Google session cookies expire frequently)
+- Fragile shadow DOM handling (Colab uses web components)
+- Slow iteration (upload -> open -> run -> screenshot per fix cycle)
+
+Vertex AI provides stable SSH-based auth, structured output instead of pixel
+screenshots, and faster iteration (no upload/screenshot cycle).
+
+Full test results: `docs/vertex-ai-test-results.md`
+
+## Current Status
+
+### Phase 0 Prototype: Complete
+
+The demo prototype (`prototypes/you_are_the_agent_demo.ipynb`) is built and
+verified:
+- 19 cells (9 code, 10 markdown), all code hidden behind Colab form cells
+- Two activities: human agent (dropdown-driven) + AI agent (prompt-driven)
+- Stratified candidate pool: round-robin selection produces ~4/3/3 mix across
+  T1D, T2D, and no-diabetes phenotypes
+- Verified on Vertex AI Workbench with live FHIR data (1,027 patients)
+- Local smoke test: 16/16 passing
+
+### Open Design Issues
+
+1. **Combined dropdown UI** — query actions and classification in the same
+   dropdown is not intuitive for students
+2. **Task too simple** — C-peptide alone differentiates T1D vs T2D, defeating
+   the multi-query agent loop pedagogy
+3. **Student perspective review** — need automated evaluation of notebook UX,
+   not just technical correctness
+
+### Remaining Phases
+
+- Phase 1: Main teaching notebook (two scenarios, three modes each)
+- Phase 2: Capstone notebook (population-scale prioritization)
+- Phase 3-6: Instructor versions, smoke tests, documentation
+
 ## Known Constraints
 
 - Self-signed TLS certificate on the SBU FHIR server requires `verify=False`
@@ -239,3 +297,5 @@ classroom setting.
 - Colab session timeouts can interrupt long-running population queries in the
   capstone; the capstone should include a progress indicator and checkpoint
   logic.
+- Vertex AI Workbench cannot render Colab form widgets (`#@param` dropdowns);
+  3 of 10 verification checklist items require manual Colab review.
