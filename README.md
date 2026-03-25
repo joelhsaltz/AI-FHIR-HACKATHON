@@ -1,116 +1,67 @@
-# FHIR + AI Hackathon 🏥🤖
+# FHIR + AI Hackathon
 
 > **Learn clinical informatics and AI agent patterns through hands-on FHIR data exploration**
 
-A comprehensive three-session educational hackathon teaching students how to query healthcare data using FHIR (Fast Healthcare Interoperability Resources) and build autonomous AI agents with Claude.
+An educational hackathon for BMI 512 (Clinical Informatics and AI) at Stony Brook
+University. Students learn FHIR data querying and AI agent patterns using a "You
+Are the Agent" pedagogy — acting as the clinical decision-maker before watching a
+Claude agent do the same thing autonomously.
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![FHIR R4](https://img.shields.io/badge/FHIR-R4-green.svg)](https://www.hl7.org/fhir/)
-[![Claude Sonnet 4.5](https://img.shields.io/badge/Claude-Sonnet%204.5-purple.svg)](https://www.anthropic.com/claude)
+[![Claude Sonnet 4](https://img.shields.io/badge/Claude-Sonnet%204-purple.svg)](https://www.anthropic.com/claude)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
 
-## 📚 Table of Contents
+## Overview
 
-- [Overview](#overview)
-- [Learning Objectives](#learning-objectives)
-- [Prerequisites](#prerequisites)
-- [Quick Start](#quick-start)
-- [Session Structure](#session-structure)
-- [Clinical Scenario](#clinical-scenario)
-- [Clinical Agent Pipeline](#clinical-agent-pipeline)
-- [Repository Structure](#repository-structure)
-- [Setup Instructions](#setup-instructions)
-- [Testing](#testing)
-- [For Instructors](#for-instructors)
-- [Technical Details](#technical-details)
-- [Contributing](#contributing)
-- [License](#license)
-- [Acknowledgments](#acknowledgments)
+Students with mixed backgrounds (MDs, PhD students, MS students from CS and
+biology) work through a Colab notebook where they:
 
----
+1. **Act as the agent** — Choose which FHIR queries to run, gather evidence,
+   classify patients with diabetes phenotypes, get immediate feedback
+2. **Prompt an AI agent** — Write a plain-language prompt, watch Claude
+   autonomously query the same FHIR data, compare its strategy to their own
 
-## 🎯 Overview
+The notebook uses Colab form cells (`#@param` dropdowns) so students interact
+purely via menus — no code writing required.
 
-This hackathon was designed for **BMI 512 (Clinical Informatics and AI)** at Stony Brook University. It teaches students with mixed backgrounds (MDs, PhD students, MS students from CS and biology) how to:
+### Current Status
 
-1. **Understand FHIR** - The modern standard for healthcare data exchange
-2. **Query clinical data** - Using REST APIs and standardized terminologies (SNOMED CT, LOINC)
-3. **Build AI agents** - That autonomously orchestrate multi-step clinical data queries
-4. **Evaluate AI systems** - Recognize failure modes and design safeguards
+**Phase 0 prototype** built and verified. The demo notebook
+(`prototypes/you_are_the_agent_demo.ipynb`) runs end-to-end in both Google
+Colab and Vertex AI Workbench against live FHIR data with 1,027 synthetic
+patients.
 
-### Why This Matters
-
-Healthcare data is fragmented across systems. FHIR provides a standardized way to access it. AI agents can help clinicians answer complex questions by autonomously chaining together the right queries. But they must be trustworthy. This hackathon teaches both the potential and the pitfalls.
+Open design issues from instructor review:
+- Combined dropdown UI (query + classify in one menu) is confusing
+- Task is too simple — C-peptide alone differentiates T1D vs T2D
+- Need richer phenotype scenarios requiring multi-query reasoning
 
 ---
 
-## 🎓 Learning Objectives
+## Learning Objectives
 
 By completing this hackathon, students will:
 
-### Session 1: FHIR Fundamentals
-- ✅ Understand FHIR resource types (Patient, Condition, Observation)
-- ✅ Query a FHIR server using REST APIs
-- ✅ Use standardized clinical terminologies (SNOMED CT, LOINC)
-- ✅ Chain multiple queries to answer clinical questions
-- ✅ Use LLMs for code generation
-
-### Session 2: AI Agent Basics
-- ✅ Understand tool use (function calling) in LLMs
-- ✅ Observe an agent autonomously orchestrating FHIR queries
-- ✅ Analyze tool call traces and decision-making
-- ✅ Compare manual vs. agentic workflows
-
-### Session 3: Agent Evaluation
-- ✅ Design custom clinical questions
-- ✅ Identify agent failure modes (hallucination, wrong tool choice, etc.)
-- ✅ Understand when to trust AI agents with clinical data
-- ✅ Learn about MCP (Model Context Protocol) for tool standardization
-
-### Supplementary Materials
-- 📄 [`run_agent_explained.md`](student_materials/run_agent_explained.md) — A beginner-friendly walkthrough of the `run_agent` function: how the tool-use loop works, what the "assistant" and "user" roles mean, and a worked example tracing a real query step by step
+1. Describe an agent loop in plain language (tool call -> result -> next decision)
+2. Choose the next FHIR query given a partial patient record and a clinical question
+3. Explain why a single data point is not sufficient for clinical classification
+4. Decide when an agent's answer is well-supported versus premature
+5. Compare their own clinical reasoning strategy to an LLM's tool-calling trace
 
 ---
 
-## 📋 Prerequisites
+## Quick Start
 
 ### For Students
 
-**Required:**
-- Basic Python knowledge (variables, functions, loops)
-- Google account (for Colab)
-- Internet connection
+1. Open the notebook in Google Colab (link provided by instructor)
+2. Add your `ANTHROPIC_API_KEY` to Colab Secrets (key icon in left sidebar)
+3. Run cells top-to-bottom — all interaction is via dropdown menus
 
-**Helpful but not required:**
-- Healthcare/clinical background
-- Understanding of APIs
-- Familiarity with pandas
-
-### For Instructors
-
-**Required:**
-- Anthropic API key ([get one here](https://console.anthropic.com/))
-- Python 3.10+
-- Git
-
----
-
-## 🚀 Quick Start
-
-### For Students
-
-1. **Download the notebooks** from the `notebooks/` folder
-2. **Upload to Google Colab**: [colab.research.google.com](https://colab.research.google.com/)
-3. **Session 1**: No setup needed! Just run the cells
-4. **Sessions 2 & 3**:
-   - Get an Anthropic API key from your instructor
-   - Add it to Colab Secrets (🔑 icon in left sidebar)
-   - Name: `ANTHROPIC_API_KEY`
-   - Value: Your API key
-
-### For Instructors
+### For Instructors / Developers
 
 ```bash
 # Clone the repository
@@ -118,81 +69,95 @@ git clone https://github.com/joelhsaltz/AI-FHIR-HACKATHON.git
 cd AI-FHIR-HACKATHON
 
 # Set your API key
-export ANTHROPIC_API_KEY=your_api_key_here
+cp .env.example .env
+# Edit .env and add: ANTHROPIC_API_KEY=your_key_here
 
 # Validate the FHIR server
-python validate_fhir_server.py
+python instructor_materials/validate_fhir_server.py
 
-# Run the tests
-python test_session1.py
-python test_session2_simplified.py
-python test_session3_simplified.py
+# Generate the demo prototype notebook
+python create_prototype_demo.py
+
+# Run the smoke test (16 cells, live FHIR data)
+python test_demo_notebook.py
 ```
 
 ---
 
-## 📖 Session Structure
+## Clinical Scenario
 
-### Session 1: FHIR Fundamentals (1 hour)
-**Materials:** `session1_student.ipynb`, `pre_session1_orientation.pdf`
-**Backup:** `session1_backup.ipynb` (if SMART FHIR server is down)
+**Classification task:** Given a working-age adult from the FHIR server, classify
+them as Type 1 diabetes, Type 2 diabetes, or no diabetes.
 
-**What students do:**
-- Learn FHIR resource structure
-- Query a public FHIR server (`https://launch.smarthealthit.org/v/r4/fhir`)
-- Use Claude web UI to generate Python code
-- Execute a multi-step clinical query manually
+Students have access to 5 FHIR query tools:
 
-**Deliverable:** None (learning session)
+| Tool | FHIR Endpoint | What it returns |
+|------|---------------|-----------------|
+| Get demographics | `GET /Patient/{id}` | Age, gender, DOB |
+| Get problem list | `GET /Condition?subject=Patient/{id}` | Conditions (diabetes diagnoses scrambled) |
+| Get lab values | `GET /Observation?subject=Patient/{id}&code={loinc}` | HbA1c, C-peptide, BMI, eGFR |
+| Get medications | `GET /MedicationRequest?subject=Patient/{id}` | Treatment regimen |
+| Get encounters | `GET /Encounter?subject=Patient/{id}` | Visit history |
 
-### Session 2: Tool Use & Agents (1 hour)
-**Materials:** `session2_student.ipynb`, `pre_session2_orientation.pdf`
+The candidate pool uses stratified selection (round-robin across T1D, T2D, and
+no-diabetes groups) to ensure phenotype variety.
 
-**What students do:**
-- Watch an AI agent autonomously execute the same pipeline from Session 1
-- Analyze the tool call trace
-- Understand how LLMs use function calling
-- Compare manual vs. agentic approaches
+### Key Clinical Codes
 
-**Deliverable:** None (observation session)
-
-### Session 3: Open-Ended Exploration (1 hour)
-**Materials:** `session3_student.ipynb`, `pre_session3_orientation.pdf`
-
-**What students do:**
-- Design 2+ custom clinical questions
-- Run them through an agent with 6 tools
-- Find and document agent failures or surprises
-- Reflect on trustworthiness
-
-**Deliverable:** JSON file (`hackathon_session3_*.json`)
+| Code | System | Meaning |
+|------|--------|---------|
+| 46635009 | SNOMED CT | Type 1 Diabetes Mellitus |
+| 44054006 | SNOMED CT | Type 2 Diabetes Mellitus |
+| 4548-4 | LOINC | HbA1c |
+| 1986-9 | LOINC | C-peptide |
+| 39156-5 | LOINC | BMI |
+| 33914-3 | LOINC | eGFR |
 
 ---
 
-## 🏥 Clinical Scenario
+## Notebook Verification
 
-**Primary Question:**
-> "Find patients with Type 2 diabetes, retrieve their most recent HbA1c values, and identify those with poor glycemic control (HbA1c > 7.0%)."
+Notebooks are verified using a two-stage pipeline:
 
-### Clinical Codes Used
+### Stage 1: Automated (Vertex AI Workbench + Jupyter MCP)
 
-| Code | System | Meaning | ICD-10 Ref |
-|------|--------|---------|------------|
-| **44054006** | SNOMED CT | Type 2 Diabetes Mellitus | E11 |
-| **59621000** | SNOMED CT | Essential Hypertension | I10 |
-| **4548-4** | LOINC | Hemoglobin A1c (HbA1c) | - |
-| 85354-9 | LOINC | Blood Pressure panel | - |
-| 2160-0 | LOINC | Creatinine | - |
+A Google Cloud Vertex AI Workbench instance provides programmatic cell execution
+with structured output capture. Claude Code hooks auto-start the instance before
+any Jupyter MCP call and auto-stop it when the session ends.
 
-### HbA1c Interpretation
-- **< 5.7%**: Normal
-- **5.7% – 6.4%**: Prediabetes
-- **≥ 6.5%**: Diabetes
-- **> 7.0%**: Poor glycemic control (needs intervention)
+```
+generate notebook (create_prototype_demo.py)
+  -> validate locally (nb_validate.py + smoke test)
+  -> execute via Jupyter MCP (all cells, structured output)
+  -> Claude reviews text/HTML/Markdown outputs
+  -> fix issues in generator -> regenerate -> re-execute -> iterate
+```
 
-**Note:** We use > 7.0% because the Synthea-generated data on this server skews toward lower HbA1c values. In clinical practice, thresholds vary by guideline (commonly 7.0%–9.0%).
+**Infrastructure:**
+- Vertex AI instance: `fhir-hackathon-instance` (e2-standard-4, us-east4)
+- SSH tunnel: localhost:8888 -> remote:8080 (Jupyter)
+- MCP server: `uvx mcp-jupyter` with `REQUEST_TIMEOUT=180`
+- Auto-start hook: `setup_vertex.sh` (PreToolUse on `mcp__jupyter__*`)
+- Auto-stop hook: `stop_vertex.sh` (Stop hook on session end)
 
-**Note:** The FHIR server uses **SNOMED CT** for conditions, not ICD-10.
+**What it verifies (7/10 checklist items):**
+Task complexity, case variety, FHIR visibility, feedback quality, activity flow,
+game mechanics, clinical plausibility.
+
+### Stage 2: Manual (Instructor Review in Colab)
+
+Three visual items require Colab's rendering engine and cannot be verified
+programmatically: UI clarity (dropdown widgets), dashboard readability (rendered
+HTML/CSS), code hidden (cellView: form). The instructor reviews these in Colab
+after automated testing passes.
+
+### Legacy: Playwright-Based Colab Automation
+
+The original verification pipeline used Playwright browser automation to open
+notebooks in Colab, run all cells, and take screenshots. This was replaced by
+Vertex AI Workbench due to persistent auth expiry, fragile shadow DOM handling,
+and slow iteration cycles. The Playwright tools remain at `scripts/colab-tools/`
+for reference but are no longer the primary verification path.
 
 ---
 
@@ -209,365 +174,83 @@ Four domain-independent AI agents support scenario design and notebook developme
 
 Agents use a three-layer context model: domain-independent identity (AGENT.md) +
 per-project context (project-brief.md) + session-specific clinical references.
-Scenario design documents at `docs/scenarios/` are shared artifacts between agents.
 
 ### Synthetic Data Generation
 
 The `synthetic-ehr/` directory contains a phenotype-driven patient generator
-(pure Python, no dependencies). Currently supports diabetes/CKD phenotypes;
-extensible to new clinical domains via the Synthetic Data Architect agent.
+(pure Python, no dependencies). Currently supports 6 diabetes/CKD phenotypes.
 
 ```bash
-# Validate phenotype configs
 python3 synthetic-ehr/scripts/validate_phenotypes.py --phenotypes synthetic-ehr/assets/phenotype_template.json
-
-# Generate a test cohort
 python3 synthetic-ehr/scripts/generate_cohort.py --phenotypes <json> --plan <json> --seed 42 --out output.csv
 ```
 
 ---
 
-## 📁 Repository Structure
+## Repository Structure
 
 ```
 fhir-hackathon/
-├── README.md                          # This file
-├── .gitignore                         # Excludes API keys, system files
-├── .env.example                       # Template for API keys
-│
-├── .claude/agents/                    # Clinical agent identities + project context
-│   ├── clinical-scenario-designer/AGENT.md
-│   ├── clinical-education-reviewer/AGENT.md
-│   ├── notebook-implementation-reviewer/AGENT.md
-│   ├── synthetic-data-architect/AGENT.md
-│   └── project-brief.md
-├── .claude/skills/                    # Agent orchestration + notebook tools
-│
-├── docs/scenarios/                    # Clinical scenario design documents
-│   ├── diabetes-type-classification.md
-│   ├── ckd-progression-risk.md
-│   ├── autoimmune-differential.md
-│   └── cll-follow-up-therapy-selection.md
-│
-├── synthetic-ehr/                     # Synthetic patient data generator
-│   ├── scripts/                       # Generation + validation scripts
-│   ├── assets/                        # Phenotype configs + cohort plans
-│   ├── references/                    # Schema documentation
-│   └── generated/                     # Output data (gitignored)
-│
-├── student_materials/
-│   ├── notebooks/                     # Student-facing Jupyter notebooks
-│   │   ├── session{1,2,3}_student.ipynb       # v1 (public SMART sandbox)
-│   │   ├── session{1,2,3}_student_v2.ipynb    # v2 (SBU server, auth patched)
-│   │   ├── session{1,2,3}_student_v3.ipynb    # v3 (SBU server, current)
-│   │   └── session1_backup.ipynb              # Local Flask FHIR fallback
-│   ├── orientation_pdfs/              # (empty — PDFs removed)
-│   └── run_agent_explained.md         # Deep-dive explainer of the agent loop
-│
-├── instructor_materials/
-│   ├── notebooks/                     # Instructor versions + annotated variants
-│   ├── tests/                         # Notebook validation tests
-│   ├── validate_fhir_server.py        # Validate FHIR server connectivity
-│   └── README_FOR_INSTRUCTORS.md
-│
-├── docs/                              # Build specs and architecture notes
-├── create_v3_notebooks.py             # Generates all 6 v3 notebooks
-├── create_annotated_notebooks.py      # Generates annotated instructor notebooks
-└── create_v2_notebooks.py             # Generates v2 notebooks (historical)
+├── prototypes/                     # Phase 0 prototype notebooks
+│   └── you_are_the_agent_demo.ipynb
+├── src/fhir_hackathon_redesign/    # Core Python modules
+│   ├── fhir.py                     # FHIR client + Claude tool schemas
+│   ├── scenarios.py                # Scenario configs, state management
+│   ├── config.py                   # Settings (API keys, FHIR creds)
+│   ├── claude_agent.py             # Claude agent loop
+│   └── capstone.py                 # Population ranking helpers
+├── create_prototype_demo.py        # Generator for demo prototype notebook
+├── test_demo_notebook.py           # Smoke test harness (16 cells, live FHIR)
+├── setup_vertex.sh                 # Vertex AI instance start + SSH tunnel
+├── stop_vertex.sh                  # Vertex AI instance stop + cleanup
+├── synthetic-ehr/                  # Synthetic patient data generator
+│   ├── scripts/                    # Generation + validation scripts
+│   ├── assets/                     # Phenotype configs
+│   └── generated/                  # Output data (gitignored)
+├── scripts/colab-tools/            # Playwright-based Colab automation (legacy)
+├── docs/                           # Design documents + scenario briefs
+│   ├── scenarios/                  # Clinical scenario design docs
+│   └── vertex-ai-test-results.md   # Vertex AI capability test report
+├── .claude/agents/                 # Clinical agent identities
+├── .claude/skills/                 # Agent orchestration skills
+├── archive/                        # Old v1/v2/v3 materials
+├── student_materials/              # Student-facing materials
+├── instructor_materials/           # Instructor materials + FHIR validator
+└── docs/                           # Design and architecture docs
 ```
 
 ---
 
-## ⚙️ Setup Instructions
+## FHIR Server
 
-### 1. Environment Setup
-
-```bash
-# Clone the repository
-git clone https://github.com/joelhsaltz/AI-FHIR-HACKATHON.git
-cd AI-FHIR-HACKATHON
-
-# (Optional) Create a virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install anthropic requests pandas jupyter
-```
-
-### 2. API Key Configuration
-
-**Option A: Environment Variable**
-```bash
-export ANTHROPIC_API_KEY=your_api_key_here
-```
-
-**Option B: .env File**
-```bash
-# Copy the template
-cp .env.example .env
-
-# Edit .env and add your key
-ANTHROPIC_API_KEY=your_api_key_here
-```
-
-**Option C: Google Colab Secrets** (recommended for students)
-1. Open a notebook in Colab
-2. Click the 🔑 icon in the left sidebar
-3. Add: `ANTHROPIC_API_KEY` = `your_api_key`
-
-### 3. Validate Setup
-
-```bash
-# Check FHIR server connectivity
-python validate_fhir_server.py
-
-# Should output:
-# ✅ 8/10 checks passed
-```
+| Setting | Value |
+|---------|-------|
+| URL | `https://lfh-fhir.eastus2.cloudapp.azure.com:9443/fhir-server/api/v4` |
+| Auth | HTTP Basic (`fhiruser` / `BmI512@ccess`) |
+| TLS | Self-signed certificate (`verify=False`) |
+| Dataset | 1,027 synthetic patients across 6 phenotypes |
+| FHIR Version | R4 (4.0.1) |
 
 ---
 
-## 🧪 Testing
+## Technical Details
 
-All three sessions have been tested against the live FHIR server.
+See [TECHNICAL.md](TECHNICAL.md) for architecture, implementation details, and
+the Vertex AI infrastructure setup.
 
-### Run All Tests
-
-```bash
-# Session 1: Manual FHIR queries
-python test_session1.py
-
-# Session 2: Agent with 3 tools
-python test_session2_simplified.py
-
-# Session 3: Agent with 6 tools
-python test_session3_simplified.py
-```
-
-### Expected Results
-
-- **Session 1**: Finds 30 patients with Type 2 diabetes
-- **Session 2**: Agent makes ~26 tool calls, identifies patients with poor control
-- **Session 3**: Agent makes 4+ tool calls, generates comprehensive patient profiles
-
-### Validation Results
-
-```bash
-python validate_fhir_server.py
-```
-
-**Passing checks (8/10):**
-- ✅ Server reachable (FHIR 4.0.0)
-- ✅ Type 2 Diabetes patients found (20+)
-- ✅ Patient demographics fetchable
-- ✅ HbA1c observations available
-- ✅ HbA1c > 7.0% found (1+ patients)
-- ✅ Medications available
-- ✅ Encounters available
-- ✅ Multiple conditions per patient
-
-**Known limitations:**
-- ⚠️ Hypertension SNOMED code returns 0 results
-- ⚠️ Creatinine observations sparse in dataset
+See [SPEC.md](SPEC.md) for requirements, scope, and design decisions.
 
 ---
 
-## 👨‍🏫 For Instructors
-
-### Annotated Notebooks
-
-The `instructor_materials/notebooks/` directory includes **annotated** versions of each instructor notebook (`session*_instructor_annotated.ipynb`). These contain 8 additional explanatory markdown cells per session that bridge clinical and technical concepts — useful for instructors who want more built-in context when teaching mixed-background audiences (MDs, CS students, biology students).
-
-To regenerate annotated notebooks after modifying the originals:
-```bash
-python create_annotated_notebooks.py
-```
-
-### Before the Hackathon
-
-1. **Test all notebooks** with your API key
-2. **Review orientation PDFs** with students
-3. **Set up Colab access** or local Jupyter environment
-4. **Prepare API keys** for students (or have them get their own)
-
-### Session Guidelines
-
-**Session 1 (1 hour):**
-- 5 min: Overview and FHIR intro
-- 10 min: Explain clinical scenario
-- 40 min: Students work through notebook
-- 5 min: Debrief and questions
-
-**Session 2 (1 hour):**
-- 5 min: Recap Session 1
-- 10 min: Explain tool use concept
-- 35 min: Students run agent and analyze
-- 10 min: Discussion of observations
-
-**Session 3 (1 hour):**
-- 5 min: Intro to open-ended exploration
-- 40 min: Students design and test questions
-- 10 min: Share failure modes discovered
-- 5 min: MCP introduction and wrap-up
-
-### Grading (Optional)
-
-Session 3 generates a JSON deliverable:
-
-```bash
-# Collect all student submissions
-mkdir submissions
-# Students upload their hackathon_session3_*.json files
-
-# Grade (requires implementation of grade_session3.py)
-python grading/grade_session3.py submissions/
-```
-
-**Grading criteria:**
-- ✅ Ran 2+ different questions
-- ✅ Found at least 1 failure mode or surprise
-- ✅ Documented observations clearly
-- ✅ Reflected on trustworthiness
-
----
-
-## 🔧 Technical Details
-
-### FHIR Server
-
-**URL:** `https://launch.smarthealthit.org/v/r4/fhir`
-
-**Characteristics:**
-- Public sandbox (no authentication)
-- FHIR R4 compliant
-- Synthea-generated synthetic data
-- ~100+ patients with various conditions
-
-**Backup:** If the SMART server is unavailable, use `session1_backup.ipynb` which runs a local Flask-based FHIR server with 30 cached Synthea patients embedded directly in the notebook. Students write identical code — only `FHIR_BASE` changes to `localhost:5050`.
-
-**API Examples:**
-
-```bash
-# Get metadata
-curl https://launch.smarthealthit.org/v/r4/fhir/metadata
-
-# Search conditions
-curl "https://launch.smarthealthit.org/v/r4/fhir/Condition?code=44054006&_count=10"
-
-# Get patient
-curl https://launch.smarthealthit.org/v/r4/fhir/Patient/abc123
-```
-
-### AI Model
-
-**Provider:** Anthropic
-**Model:** Claude Sonnet 4.5 (`claude-sonnet-4-20250514`)
-**Tool Use:** Native Anthropic format
-
-**Why Anthropic-only?**
-- Simplified from dual-provider architecture
-- Better educational clarity
-- Native tool use support
-- Consistent behavior
-
-### Architecture
-
-**Session 1:** Manual orchestration
-```
-Student → Claude Web UI → Python Code → FHIR Server
-```
-
-**Sessions 2 & 3:** Agentic orchestration
-```
-Student Question → Agent Loop → Tool Calls → FHIR Server
-                      ↑            ↓
-                      └── Results ─┘
-```
-
-**Tool Schema Format:** Anthropic native
-```python
-{
-    "name": "search_conditions",
-    "description": "Search for Condition resources...",
-    "input_schema": {
-        "type": "object",
-        "properties": {...},
-        "required": [...]
-    }
-}
-```
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please:
-
-1. **Fork the repository**
-2. **Create a feature branch** (`git checkout -b feature/improvement`)
-3. **Make your changes**
-4. **Test thoroughly**
-5. **Commit** (`git commit -m 'Add some improvement'`)
-6. **Push** (`git push origin feature/improvement`)
-7. **Open a Pull Request**
-
-### Areas for Improvement
-
-- 🎯 Additional clinical scenarios
-- 🧪 More test coverage
-- 📚 Additional FHIR resources (Procedures, DiagnosticReports)
-- 🌐 Multi-language support
-- 🎨 Better visualizations
-- 🤖 Additional LLM providers
-
----
-
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
-- **SMART Health IT** for providing the public FHIR sandbox
+- **Stony Brook University** Department of Biomedical Informatics
 - **Anthropic** for Claude and tool use capabilities
 - **HL7** for the FHIR specification
-- **Synthea** for synthetic patient data
-- **BMI 512 students** for feedback and testing
-
----
-
-## 📞 Support
-
-**For students:**
-- Review the orientation PDFs in this repository
-- Check the notebook comments and instructions
-- Ask your instructor
-
-**For instructors:**
-- Open an issue in this repository
-- Review `fhir_hackathon_claude_code_spec.md` for detailed documentation
-- Check `TESTING_SUMMARY.md` for validation results
-
----
-
-## 🔗 Useful Links
-
-- [FHIR Documentation](https://www.hl7.org/fhir/)
-- [SMART on FHIR](https://docs.smarthealthit.org/)
-- [Anthropic Claude Docs](https://docs.anthropic.com/)
-- [SNOMED CT Browser](https://browser.ihtsdotools.org/)
-- [LOINC Search](https://loinc.org/)
-- [Synthea Patient Generator](https://synthetichealth.github.io/synthea/)
-
----
-
-<div align="center">
-
-**Built with ❤️ for clinical informatics education**
-
-⭐ Star this repo if you find it helpful!
-
-</div>
+- **Synthea** for synthetic patient data generation patterns

@@ -627,31 +627,28 @@ for _entry in _pat_bundle.get("entry", []):
     })
     _seen_patients.add(_pid)
 
-# Shuffle to avoid demographic clustering from sequential FHIR results
-_random.shuffle(_candidate_rows)
-
-# Select up to 10 candidates, aiming for ~3-4 from each group
-_group_counts = {"t1d": 0, "t2d": 0, "no_diabetes": 0}
-_group_limits = {"t1d": 4, "t2d": 4, "no_diabetes": 4}
-# First pass: take up to limit from each group
+# --- Stratified selection: group, shuffle within groups, round-robin pick ---
+_by_group = {"t1d": [], "t2d": [], "no_diabetes": []}
 for _row in _candidate_rows:
-    _g = _row["_group"]
-    if _group_counts[_g] >= _group_limits[_g]:
-        continue
-    _group_counts[_g] += 1
-    _row["Case #"] = len(_final_candidates) + 1
-    _final_candidates.append(_row)
-    if len(_final_candidates) >= 10:
-        break
-# Second pass: fill remaining slots
-if len(_final_candidates) < 10:
-    for _row in _candidate_rows:
-        if _row in _final_candidates:
-            continue
+    _by_group[_row["_group"]].append(_row)
+for _g in _by_group:
+    _random.shuffle(_by_group[_g])
+
+# Round-robin across groups until we have 10 candidates
+_group_order = ["t1d", "t2d", "no_diabetes"]
+_gi = 0  # group index
+_group_idx = {"t1d": 0, "t2d": 0, "no_diabetes": 0}  # position within each group
+while len(_final_candidates) < 10:
+    _g = _group_order[_gi % len(_group_order)]
+    _gi += 1
+    if _group_idx[_g] < len(_by_group[_g]):
+        _row = _by_group[_g][_group_idx[_g]]
+        _group_idx[_g] += 1
         _row["Case #"] = len(_final_candidates) + 1
         _final_candidates.append(_row)
-        if len(_final_candidates) >= 10:
-            break
+    # If all groups exhausted, stop
+    if all(_group_idx[g] >= len(_by_group[g]) for g in _group_order):
+        break
 
 for _q, _rtype in _query_log:
     _show_query(_q, _rtype)
