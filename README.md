@@ -72,6 +72,9 @@ runs against the live FHIR server.
 
 ## Quick Start: Run an Existing Notebook
 
+> **New to the framework?** See [GETTING_STARTED.md](GETTING_STARTED.md) for a
+> focused walkthrough from clone to creating your own scenario.
+
 ```bash
 # 1. Clone the repository
 git clone https://github.com/joelhsaltz/AI-FHIR-HACKATHON.git
@@ -247,6 +250,12 @@ institution provides OpenAI keys, students can use those. If students have
 Anthropic keys, they get slightly better clinical reasoning accuracy (100% vs
 67% on the diabetes complexity benchmark with default prompts), but either
 provider produces a valid learning experience.
+
+**Azure AI Foundry note:** If your institution provides OpenAI access through
+Azure AI Foundry, those keys use the `AzureOpenAI` client class with an
+endpoint URL and API version. The current framework uses the standard `OpenAI`
+client. For now, use a direct OpenAI key (from platform.openai.com) or an
+Anthropic key. Azure support is planned for a future update.
 
 ---
 
