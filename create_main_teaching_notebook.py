@@ -2,7 +2,7 @@
 """Generate the main teaching notebook for the redesigned hackathon.
 
 This produces a self-contained Colab notebook with all code inlined --
-no src/ imports, no openai references. Everything uses Anthropic/Claude.
+no src/ imports. Supports Anthropic and OpenAI via provider adapter.
 """
 
 from __future__ import annotations
@@ -56,7 +56,13 @@ def build_notebook(cells: list[dict]) -> dict:
 # ---------------------------------------------------------------------------
 
 SETUP = """\
-!pip install -q anthropic requests pandas
+AI_PROVIDER = "Anthropic"  # Change to "OpenAI" if using OpenAI
+import subprocess, sys
+_provider_pkg = {"Anthropic": "anthropic", "OpenAI": "openai"}[AI_PROVIDER]
+subprocess.check_call(
+    [sys.executable, "-m", "pip", "install", "-q", _provider_pkg, "requests", "pandas"],
+    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+)
 
 import os
 import json
@@ -75,17 +81,74 @@ FHIR_SESSION = requests.Session()
 FHIR_SESSION.auth = ("fhiruser", "BmI512@ccess")
 FHIR_SESSION.verify = False
 
-# ── Anthropic client ──
+# ── LLM client (provider-agnostic) ──
+_PROVIDER = AI_PROVIDER.lower()
+_SECRET_NAMES = {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY"}
+_DEFAULT_MODELS = {"anthropic": "claude-sonnet-4-20250514", "openai": "gpt-4.1-mini"}
+_secret_name = _SECRET_NAMES[_PROVIDER]
+
 try:
     from google.colab import userdata
-    ANTHROPIC_API_KEY = userdata.get("ANTHROPIC_API_KEY")
+    _API_KEY = userdata.get(_secret_name)
 except Exception:
-    ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+    _API_KEY = os.environ.get(_secret_name, "")
 
-from anthropic import Anthropic
+MODEL = _DEFAULT_MODELS[_PROVIDER]
+_llm_client = None
 
-client = Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
-MODEL = "claude-sonnet-4-20250514"
+if _API_KEY:
+    if _PROVIDER == "anthropic":
+        from anthropic import Anthropic
+        _llm_client = Anthropic(api_key=_API_KEY)
+    elif _PROVIDER == "openai":
+        from openai import OpenAI
+        _llm_client = OpenAI(api_key=_API_KEY)
+
+# ── Provider adapter ──
+def _llm_create(messages, system, tools, max_tokens=4096):
+    if _PROVIDER == "anthropic":
+        _a_tools = [{"name": t["name"], "description": t["description"], "input_schema": t["parameters"]} for t in tools] if tools else None
+        kwargs = {"model": MODEL, "max_tokens": max_tokens, "messages": messages}
+        if system: kwargs["system"] = system
+        if _a_tools: kwargs["tools"] = _a_tools
+        resp = _llm_client.messages.create(**kwargs)
+        text = "".join(b.text for b in resp.content if b.type == "text")
+        tc = [{"id": b.id, "name": b.name, "arguments": b.input} for b in resp.content if b.type == "tool_use"]
+        return text, tc, resp
+    elif _PROVIDER == "openai":
+        oai_msgs = ([{"role": "system", "content": system}] + messages) if system else list(messages)
+        kwargs = {"model": MODEL, "max_tokens": max_tokens, "messages": oai_msgs}
+        if tools:
+            kwargs["tools"] = [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["parameters"]}} for t in tools]
+        resp = _llm_client.chat.completions.create(**kwargs)
+        choice = resp.choices[0]
+        text = choice.message.content or ""
+        tc = []
+        if choice.message.tool_calls:
+            for c in choice.message.tool_calls:
+                tc.append({"id": c.id, "name": c.function.name, "arguments": json.loads(c.function.arguments)})
+        return text, tc, resp
+
+def _llm_serialize_assistant(raw_resp):
+    if _PROVIDER == "anthropic":
+        content = []
+        for b in raw_resp.content:
+            if b.type == "text": content.append({"type": "text", "text": b.text})
+            elif b.type == "tool_use": content.append({"type": "tool_use", "id": b.id, "name": b.name, "input": b.input})
+        return {"role": "assistant", "content": content}
+    elif _PROVIDER == "openai":
+        choice = raw_resp.choices[0]
+        msg = {"role": "assistant"}
+        if choice.message.content: msg["content"] = choice.message.content
+        if choice.message.tool_calls:
+            msg["tool_calls"] = [{"id": c.id, "type": "function", "function": {"name": c.function.name, "arguments": c.function.arguments}} for c in choice.message.tool_calls]
+        return msg
+
+def _llm_format_tool_results(results):
+    if _PROVIDER == "anthropic":
+        return [{"role": "user", "content": [{"type": "tool_result", "tool_use_id": r["call_id"], "content": r["output"]} for r in results]}]
+    elif _PROVIDER == "openai":
+        return [{"role": "tool", "tool_call_id": r["call_id"], "content": r["output"]} for r in results]
 
 # ── Verify FHIR connection ──
 resp = FHIR_SESSION.get(f"{FHIR_BASE}/metadata", params={"_format": "json"}, timeout=20)
@@ -99,7 +162,7 @@ count_resp = FHIR_SESSION.get(
 )
 print("FHIR server ready")
 print(f"Patient count: {count_resp.json().get('total', 'unknown')}")
-print(f"Anthropic client: {'enabled' if client else 'disabled (set ANTHROPIC_API_KEY)'}")
+print(f"AI provider: {AI_PROVIDER} ({MODEL}) — {'enabled' if _llm_client else 'disabled (set ' + _secret_name + ')'}")
 """
 
 FHIR_TOOLS = """\
@@ -302,42 +365,47 @@ def search_patients(max_results=50):
 print("FHIR tool functions loaded")
 """
 
-CLAUDE_TOOL_SCHEMAS = """\
-# ── Claude tool schemas (Anthropic format) ──
+TOOL_SCHEMAS = """\
+# ── Tool schemas (canonical format, converted per provider in adapter) ──
 tools = [
     {
+        "type": "function",
         "name": "search_conditions",
         "description": (
             "Search for conditions by SNOMED CT code. "
             "Common codes: 46635009 for Type 1 diabetes, "
             "44054006 for Type 2 diabetes, 709044004 for chronic kidney disease."
         ),
-        "input_schema": {
+        "parameters": {
             "type": "object",
             "properties": {
                 "code": {"type": "string", "description": "SNOMED CT code to search for"},
                 "max_results": {"type": "integer", "default": 50},
             },
             "required": ["code"],
+            "additionalProperties": False,
         },
     },
     {
+        "type": "function",
         "name": "get_patient",
         "description": "Get demographics for a single patient by patient ID.",
-        "input_schema": {
+        "parameters": {
             "type": "object",
             "properties": {"patient_id": {"type": "string"}},
             "required": ["patient_id"],
+            "additionalProperties": False,
         },
     },
     {
+        "type": "function",
         "name": "search_observations",
         "description": (
             "Search observations for a patient by LOINC code. "
             "Useful codes: 4548-4 HbA1c, 1986-9 C-peptide, 39156-5 BMI, "
             "2160-0 creatinine, 33914-3 eGFR, 14959-1 urine albumin/creatinine ratio."
         ),
-        "input_schema": {
+        "parameters": {
             "type": "object",
             "properties": {
                 "patient_id": {"type": "string"},
@@ -345,50 +413,59 @@ tools = [
                 "max_results": {"type": "integer", "default": 5},
             },
             "required": ["patient_id", "loinc_code"],
+            "additionalProperties": False,
         },
     },
     {
+        "type": "function",
         "name": "search_medications",
         "description": "Get medication requests for a patient.",
-        "input_schema": {
+        "parameters": {
             "type": "object",
             "properties": {
                 "patient_id": {"type": "string"},
                 "max_results": {"type": "integer", "default": 10},
             },
             "required": ["patient_id"],
+            "additionalProperties": False,
         },
     },
     {
+        "type": "function",
         "name": "search_all_conditions",
         "description": "Get the full problem list for a patient.",
-        "input_schema": {
+        "parameters": {
             "type": "object",
             "properties": {
                 "patient_id": {"type": "string"},
                 "max_results": {"type": "integer", "default": 20},
             },
             "required": ["patient_id"],
+            "additionalProperties": False,
         },
     },
     {
+        "type": "function",
         "name": "search_encounters",
         "description": "Get recent encounters for a patient.",
-        "input_schema": {
+        "parameters": {
             "type": "object",
             "properties": {
                 "patient_id": {"type": "string"},
                 "max_results": {"type": "integer", "default": 10},
             },
             "required": ["patient_id"],
+            "additionalProperties": False,
         },
     },
     {
+        "type": "function",
         "name": "search_patients",
         "description": "Get a batch of patient demographics.",
-        "input_schema": {
+        "parameters": {
             "type": "object",
             "properties": {"max_results": {"type": "integer", "default": 50}},
+            "additionalProperties": False,
         },
     },
 ]
@@ -412,7 +489,7 @@ def call_tool(name, args):
     return fn(**args)
 
 
-print("Claude tool schemas and dispatcher loaded")
+print("Tool schemas and dispatcher loaded")
 """
 
 STATE_MANAGEMENT = """\
@@ -565,10 +642,10 @@ def summarize_state_for_llm(state, evidence_gap_fn):
 
 
 def suggest_next_step(state, evidence_gap_fn, system_prompt=None):
-    if client is None:
+    if _llm_client is None:
         return (
-            "Anthropic client not configured. Human mode is still available. "
-            "Set ANTHROPIC_API_KEY to enable LLM coaching."
+            "AI client not configured. Human mode is still available. "
+            "Set your API key (see setup cell) to enable LLM coaching."
         )
 
     summary = summarize_state_for_llm(state, evidence_gap_fn)
@@ -581,66 +658,37 @@ def suggest_next_step(state, evidence_gap_fn, system_prompt=None):
         "Be concise and explain why.\\n\\n"
         + json.dumps(summary, indent=2, default=str)
     )
-    kwargs = {
-        "model": MODEL,
-        "max_tokens": 300,
-        "messages": [{"role": "user", "content": prompt}],
-    }
-    if system_prompt:
-        kwargs["system"] = system_prompt
-    response = client.messages.create(**kwargs)
-    return "".join(block.text for block in response.content if hasattr(block, "text"))
+    text, _, _ = _llm_create(
+        [{"role": "user", "content": prompt}], system_prompt, None, max_tokens=300,
+    )
+    return text
 
 
 # ── Full autonomous agent loop ──
 def run_agent(question, system_prompt, max_steps=8):
-    if client is None:
-        raise ValueError("Anthropic client not configured. Set ANTHROPIC_API_KEY.")
+    if _llm_client is None:
+        raise ValueError("AI client not configured. Set your API key in the setup cell.")
 
     messages = [{"role": "user", "content": question}]
     tool_calls_log = []
 
     for step in range(1, max_steps + 1):
-        response = client.messages.create(
-            model=MODEL,
-            max_tokens=4096,
-            system=system_prompt,
-            messages=messages,
-            tools=tools,
-        )
+        text, tool_calls, raw_resp = _llm_create(messages, system_prompt, tools)
 
-        # Check for tool use
-        tool_use_blocks = [b for b in response.content if b.type == "tool_use"]
-
-        if not tool_use_blocks:
-            # No tool calls => final text answer
-            answer = "".join(b.text for b in response.content if hasattr(b, "text"))
+        if not tool_calls:
             return {
-                "answer": answer,
+                "answer": text,
                 "tool_calls": tool_calls_log,
                 "messages": messages,
                 "completed": True,
             }
 
-        # Serialize assistant content for message history
-        assistant_content = []
-        for block in response.content:
-            if block.type == "text":
-                assistant_content.append({"type": "text", "text": block.text})
-            elif block.type == "tool_use":
-                assistant_content.append({
-                    "type": "tool_use",
-                    "id": block.id,
-                    "name": block.name,
-                    "input": block.input,
-                })
-        messages.append({"role": "assistant", "content": assistant_content})
+        messages.append(_llm_serialize_assistant(raw_resp))
 
-        # Execute each tool call and collect results
-        tool_results = []
-        for block in tool_use_blocks:
-            fn_name = block.name
-            fn_args = block.input
+        raw_results = []
+        for tc in tool_calls:
+            fn_name = tc["name"]
+            fn_args = tc["arguments"]
             try:
                 result = call_tool(fn_name, fn_args)
             except Exception as e:
@@ -653,19 +701,15 @@ def run_agent(question, system_prompt, max_steps=8):
                 "result_preview": str(result)[:300],
             })
 
-            tool_results.append({
-                "type": "tool_result",
-                "tool_use_id": block.id,
-                "content": json.dumps(result, default=str),
+            raw_results.append({
+                "call_id": tc["id"],
+                "output": json.dumps(result, default=str),
             })
 
-        # Send tool results back as a user message
-        messages.append({"role": "user", "content": tool_results})
+        messages.extend(_llm_format_tool_results(raw_results))
 
-    # Reached max steps
-    answer = "".join(b.text for b in response.content if hasattr(b, "text"))
     return {
-        "answer": answer,
+        "answer": text,
         "tool_calls": tool_calls_log,
         "messages": messages,
         "completed": False,
@@ -1236,7 +1280,7 @@ def main() -> None:
     cells = [
         # ── 1. Title + Learning Arc ──
         md_cell(
-            "# You Are the Agent: Clinical Data Review with FHIR and Claude\n\n"
+            "# You Are the Agent: Clinical Data Review with FHIR and AI\n\n"
             "## The \"You Are the Agent\" Pedagogy\n\n"
             "In a typical AI agent demo, you watch the LLM call tools and produce an answer. "
             "That is like watching someone else drive. In this notebook, **you drive first**.\n\n"
@@ -1259,7 +1303,7 @@ def main() -> None:
         ),
 
         # ── 2. Setup Cell ──
-        md_cell("## Setup\n\nInstall dependencies, connect to FHIR server, and initialize the Anthropic client."),
+        md_cell("## Setup\n\nInstall dependencies, connect to FHIR server, and initialize the AI client."),
         code_cell(SETUP),
 
         # ── 3. FHIR Tool Functions ──
@@ -1271,13 +1315,13 @@ def main() -> None:
         ),
         code_cell(FHIR_TOOLS),
 
-        # ── 4. Claude Tool Schemas ──
+        # ── 4. Tool Schemas ──
         md_cell(
-            "## Claude Tool Schemas\n\n"
-            "These are the same functions described in the format that Claude's API expects. "
-            "The `tools` list tells Claude what it can call, and `call_tool` dispatches the call."
+            "## Tool Schemas\n\n"
+            "These are the same functions described in the format that the AI agent expects. "
+            "The `tools` list tells the agent what it can call, and `call_tool` dispatches the call."
         ),
-        code_cell(CLAUDE_TOOL_SCHEMAS),
+        code_cell(TOOL_SCHEMAS),
 
         # ── 5. State Management + Evidence Tracking ──
         md_cell(
@@ -1291,8 +1335,8 @@ def main() -> None:
         md_cell(
             "## LLM Coach and Agent Loop\n\n"
             "Two capabilities:\n"
-            "- **`suggest_next_step`**: Asks Claude to recommend one next action (coaching mode, for Hybrid)\n"
-            "- **`run_agent`**: Runs a full autonomous agent loop where Claude calls tools and produces a final answer (LLM mode)\n\n"
+            "- **`suggest_next_step`**: Asks the AI to recommend one next action (coaching mode, for Hybrid)\n"
+            "- **`run_agent`**: Runs a full autonomous agent loop where the AI calls tools and produces a final answer (LLM mode)\n\n"
             "The agent loop follows the battle-tested pattern:\n"
             "- Client-side message history (no server-side state)\n"
             "- Serialize assistant content as dicts for message history\n"
@@ -1351,15 +1395,15 @@ def main() -> None:
 
         md_cell(
             "### Hybrid Mode\n\n"
-            "In Hybrid mode, you still drive, but you can ask Claude for a suggestion "
+            "In Hybrid mode, you still drive, but you can ask the AI for a suggestion "
             "at any time by choosing option 11 in the menu above. The LLM sees your "
             "current evidence state and recommends one next action.\n\n"
             "This is the same menu -- just use option 11 when you want coaching."
         ),
 
         md_cell(
-            "### LLM Mode: Let Claude Run Autonomously\n\n"
-            "Now let Claude handle the same task. Compare its strategy and conclusion "
+            "### LLM Mode: Let the AI Run Autonomously\n\n"
+            "Now let the AI handle the same task. Compare its strategy and conclusion "
             "with your own."
         ),
         code_cell(SCENARIO1_LLM_MODE),
@@ -1405,8 +1449,8 @@ def main() -> None:
         code_cell(SCENARIO2_HUMAN_MODE + "\nscenario2_human_turn()"),
 
         md_cell(
-            "### LLM Mode: Let Claude Run Autonomously\n\n"
-            "Now let Claude handle the same case. Compare its strategy and conclusion "
+            "### LLM Mode: Let the AI Run Autonomously\n\n"
+            "Now let the AI handle the same case. Compare its strategy and conclusion "
             "with your own."
         ),
         code_cell(SCENARIO2_LLM_MODE),

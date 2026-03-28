@@ -3,13 +3,14 @@
 Quick smoke test: extract code cells from the demo notebook and run them
 in order, mocking interactive #@param values and skipping LLM-dependent cells.
 
-Two-activity notebook structure (9 steps):
+Two-activity notebook structure (10 steps):
   Steps 1-3: Setup (FHIR connection, tools, candidates)
   Step 4: Choose number of cases
-  Step 5: Activity 1 — investigate and classify (combined cell, multi-case loop)
-  Step 6: Activity 1 results
-  Steps 7-8: Activity 2 (prompt editor, AI agent — skipped, needs LLM)
-  Step 9: Summary (skipped, needs agent_runs populated)
+  Step 5: Activity 1 — investigate (query-only cell, repeatable)
+  Step 6: Activity 1 — classify (classification cell with confirmation)
+  Step 7: Activity 1 results
+  Steps 8-9: Activity 2 (prompt editor, AI agent — skipped, needs LLM)
+  Step 10: Summary (skipped, needs agent_runs populated)
 """
 
 import json
@@ -45,28 +46,57 @@ def run_cell(code, namespace, label, timeout_sec=120):
         signal.alarm(0)
 
 
-# The combined action dropdown
-ACTION_PARAM_OLD = (
-    'action = "Get demographics" #@param '
-    '["Get demographics", "Get problem list", "Get C-peptide", '
-    '"Get HbA1c", "Get BMI", "Get eGFR", "Get treatment regimen", '
-    '"Get encounters", "— CLASSIFY —", '
-    '"Classify: Type 1", "Classify: Type 2", "Classify: No diabetes"]'
+# New query-only dropdown
+QUERY_PARAM = (
+    'query = "Get HbA1c" #@param '
+    '["Get demographics", "Get problem list", "Get HbA1c", '
+    '"Get eGFR", "Get UACR", "Get treatment regimen", '
+    '"Get C-peptide", "Get encounters"]'
+)
+
+# Classification dropdown
+CLASSIFY_PARAM = (
+    'classification = "Routine" #@param '
+    '["Routine", "Moderate complexity", "High complexity", "No diabetes"]'
+)
+
+CONFIRM_PARAM = (
+    'confirm = "No, let me query more" #@param '
+    '["No, let me query more", "Yes, submit my answer"]'
 )
 
 
-def strip_params(src, action_value="Get demographics"):
+def strip_params(src, **overrides):
     """Replace #@param annotations with concrete values."""
     processed = src
     processed = re.sub(r"#@title .+\n?", "", processed)
-    # Action dropdown (Step 5 — combined investigate and classify)
-    processed = processed.replace(ACTION_PARAM_OLD, f'action = "{action_value}"')
+
+    # Query dropdown (Step 5)
+    if "query" in overrides:
+        processed = processed.replace(QUERY_PARAM, f'query = "{overrides["query"]}"')
+
+    # Classification dropdown (Step 6)
+    if "classification" in overrides:
+        processed = processed.replace(CLASSIFY_PARAM, f'classification = "{overrides["classification"]}"')
+
+    # Confirm dropdown (Step 6)
+    if "confirm" in overrides:
+        processed = processed.replace(CONFIRM_PARAM, f'confirm = "{overrides["confirm"]}"')
+
     # Num cases (Step 4)
     processed = processed.replace(
-        'num_cases = 3 #@param {type:"integer"}',
+        'num_cases = 6 #@param {type:"integer"}',
         'num_cases = 3',
     )
-    # Agent prompt editor (Step 7)
+
+    # AI provider dropdown (Step 1)
+    processed = re.sub(
+        r'AI_PROVIDER = ".*?" #@param \["Anthropic", "OpenAI"\]',
+        'AI_PROVIDER = "Anthropic"',
+        processed,
+    )
+
+    # Agent prompt editor (Step 8)
     processed = re.sub(
         r'agent_prompt = ".*?" #@param \{type:"string"\}',
         'agent_prompt = "Test agent prompt"',
@@ -99,29 +129,26 @@ def main():
             results.append(("SKIP", title))
             continue
 
-        # For the combined investigate-and-classify cell, run the full multi-case flow
-        if "investigate and classify" in title.lower():
-            # First run: default action (Get demographics) for case 1
-            processed = strip_params(src)
-            ok = run_cell(processed, ns, f"{title} (Get demographics)", timeout_sec=180)
-            results.append(("PASS" if ok else "FAIL", f"{title}: Get demographics"))
+        # Step 5: Query cell — run multiple queries for case 1
+        if "query the fhir server" in title.lower():
+            queries = ["Get HbA1c", "Get eGFR", "Get UACR", "Get treatment regimen",
+                        "Get problem list", "Get C-peptide", "Get encounters"]
+            for q in queries:
+                processed = strip_params(src, query=q)
+                ok = run_cell(processed, ns, f"Query: {q}", timeout_sec=60)
+                results.append(("PASS" if ok else "FAIL", f"Query: {q}"))
+            continue
 
-            # Test additional query tools for case 1
-            for tool_action in ["Get C-peptide", "Get HbA1c", "Get BMI", "Get eGFR",
-                                "Get treatment regimen", "Get encounters"]:
-                tool_src = strip_params(src, action_value=tool_action)
-                ok_tool = run_cell(tool_src, ns, f"Investigate: {tool_action}", timeout_sec=60)
-                results.append(("PASS" if ok_tool else "FAIL", f"Investigate: {tool_action}"))
-
-            # Classify all cases in sequence using the combined cell
+        # Step 6: Classify cell — classify all cases
+        if "classify this patient" in title.lower():
             num_cases = ns.get("_state", {}).get("num_cases", 3)
             for case_i in range(num_cases):
                 pid = ns["_state"]["patient_id"]
                 if pid:
                     gt = ns["_get_ground_truth"](pid)
-                    classify_src = strip_params(src, action_value=f"Classify: {gt}")
+                    processed = strip_params(src, classification=gt, confirm="Yes, submit my answer")
                     label = f"Classify case {case_i+1} (answer={gt})"
-                    ok = run_cell(classify_src, ns, label, timeout_sec=60)
+                    ok = run_cell(processed, ns, label, timeout_sec=60)
                     results.append(("PASS" if ok else "FAIL", label))
             continue
 
