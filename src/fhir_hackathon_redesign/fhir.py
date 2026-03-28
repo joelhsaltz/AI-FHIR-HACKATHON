@@ -276,41 +276,50 @@ class FHIRClient:
             raise KeyError(f"Unknown tool: {name}")
         return fn(**args)
 
-    def build_claude_tools(self) -> list[dict[str, Any]]:
+    def build_tools(self) -> list[dict[str, Any]]:
+        """Return tool schemas in OpenAI-canonical format (the common interchange format).
+
+        Use ``tools_for_anthropic()`` to convert these to Anthropic's format.
+        """
         return [
             {
+                "type": "function",
                 "name": "search_conditions",
                 "description": (
                     "Search for conditions by SNOMED CT code. "
                     "Common codes: 46635009 for Type 1 diabetes, "
                     "44054006 for Type 2 diabetes, 709044004 for chronic kidney disease."
                 ),
-                "input_schema": {
+                "parameters": {
                     "type": "object",
                     "properties": {
                         "code": {"type": "string"},
                         "max_results": {"type": "integer", "default": 50},
                     },
                     "required": ["code"],
+                    "additionalProperties": False,
                 },
             },
             {
+                "type": "function",
                 "name": "get_patient",
                 "description": "Get demographics for a single patient by patient ID.",
-                "input_schema": {
+                "parameters": {
                     "type": "object",
                     "properties": {"patient_id": {"type": "string"}},
                     "required": ["patient_id"],
+                    "additionalProperties": False,
                 },
             },
             {
+                "type": "function",
                 "name": "search_observations",
                 "description": (
                     "Search observations for a patient by LOINC code. "
                     "Useful codes: 4548-4 HbA1c, 1986-9 C-peptide, 39156-5 BMI, "
                     "2160-0 creatinine, 33914-3 eGFR, 14959-1 urine albumin/creatinine ratio."
                 ),
-                "input_schema": {
+                "parameters": {
                     "type": "object",
                     "properties": {
                         "patient_id": {"type": "string"},
@@ -318,50 +327,71 @@ class FHIRClient:
                         "max_results": {"type": "integer", "default": 5},
                     },
                     "required": ["patient_id", "loinc_code"],
+                    "additionalProperties": False,
                 },
             },
             {
+                "type": "function",
                 "name": "search_medications",
                 "description": "Get medication requests for a patient.",
-                "input_schema": {
+                "parameters": {
                     "type": "object",
                     "properties": {
                         "patient_id": {"type": "string"},
                         "max_results": {"type": "integer", "default": 10},
                     },
                     "required": ["patient_id"],
+                    "additionalProperties": False,
                 },
             },
             {
+                "type": "function",
                 "name": "search_all_conditions",
                 "description": "Get the full problem list for a patient.",
-                "input_schema": {
+                "parameters": {
                     "type": "object",
                     "properties": {
                         "patient_id": {"type": "string"},
                         "max_results": {"type": "integer", "default": 20},
                     },
                     "required": ["patient_id"],
+                    "additionalProperties": False,
                 },
             },
             {
+                "type": "function",
                 "name": "search_encounters",
                 "description": "Get recent encounters for a patient.",
-                "input_schema": {
+                "parameters": {
                     "type": "object",
                     "properties": {
                         "patient_id": {"type": "string"},
                         "max_results": {"type": "integer", "default": 10},
                     },
                     "required": ["patient_id"],
+                    "additionalProperties": False,
                 },
             },
             {
+                "type": "function",
                 "name": "search_patients",
                 "description": "Get a batch of patient demographics.",
-                "input_schema": {
+                "parameters": {
                     "type": "object",
                     "properties": {"max_results": {"type": "integer", "default": 50}},
+                    "additionalProperties": False,
                 },
             },
         ]
+
+
+def tools_for_anthropic(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Convert OpenAI-canonical tool schemas to Anthropic's format."""
+    return [
+        {
+            "name": t["name"],
+            "description": t["description"],
+            "input_schema": t["parameters"],
+        }
+        for t in tools
+    ]

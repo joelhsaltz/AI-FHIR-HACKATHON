@@ -9,7 +9,7 @@ import re
 from typing import Any
 
 from .fhir import FHIRClient, LOINC, SNOMED
-from .claude_agent import ClaudeClient
+from .agent import LLMClient as ClaudeClient  # backward compat alias
 from .scenarios import normalize_patient_reference
 
 

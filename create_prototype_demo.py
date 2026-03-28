@@ -62,9 +62,13 @@ def build_notebook(cells):
 
 SETUP = r"""
 #@title Step 1: Connect to the FHIR server
+AI_PROVIDER = "Anthropic" #@param ["Anthropic", "OpenAI"]
 import subprocess, sys
+
+# Install only the selected provider's SDK
+_provider_pkg = {"Anthropic": "anthropic", "OpenAI": "openai"}[AI_PROVIDER]
 subprocess.check_call(
-    [sys.executable, "-m", "pip", "install", "-q", "anthropic", "requests", "pandas"],
+    [sys.executable, "-m", "pip", "install", "-q", _provider_pkg, "requests", "pandas"],
     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
 )
 
@@ -81,18 +85,92 @@ FHIR_SESSION = requests.Session()
 FHIR_SESSION.auth = ("fhiruser", "BmI512@ccess")
 FHIR_SESSION.verify = False
 
-# ---- Anthropic client (optional) ----
+# ---- LLM client (provider-agnostic) ----
+_PROVIDER = AI_PROVIDER.lower()
+_SECRET_NAMES = {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY"}
+_DEFAULT_MODELS = {"anthropic": "claude-sonnet-4-20250514", "openai": "gpt-4.1-mini"}
+_secret_name = _SECRET_NAMES[_PROVIDER]
+
 try:
     from google.colab import userdata
-    ANTHROPIC_API_KEY = userdata.get("ANTHROPIC_API_KEY")
+    _API_KEY = userdata.get(_secret_name)
 except Exception:
-    ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
-try:
-    from anthropic import Anthropic
-except Exception:
-    Anthropic = None
-_anthropic_client = Anthropic(api_key=ANTHROPIC_API_KEY) if (Anthropic and ANTHROPIC_API_KEY) else None
-MODEL = "claude-sonnet-4-20250514"
+    _API_KEY = os.environ.get(_secret_name, "")
+
+MODEL = _DEFAULT_MODELS[_PROVIDER]
+_llm_client = None
+
+if _API_KEY:
+    if _PROVIDER == "anthropic":
+        from anthropic import Anthropic
+        _llm_client = Anthropic(api_key=_API_KEY)
+    elif _PROVIDER == "openai":
+        from openai import OpenAI
+        _llm_client = OpenAI(api_key=_API_KEY)
+
+# ---- Provider adapter (3 functions) ----
+# _llm_create: Send a message, return (text, tool_calls, raw_response)
+# _llm_serialize_assistant: Serialize assistant response for message history
+# _llm_format_tool_results: Format tool results for the provider
+def _llm_create(messages, system, tools, max_tokens=4096):
+    if _PROVIDER == "anthropic":
+        _anthropic_tools = [
+            {"name": t["name"], "description": t["description"], "input_schema": t["parameters"]}
+            for t in tools
+        ] if tools else None
+        kwargs = {"model": MODEL, "max_tokens": max_tokens, "messages": messages}
+        if system: kwargs["system"] = system
+        if _anthropic_tools: kwargs["tools"] = _anthropic_tools
+        resp = _llm_client.messages.create(**kwargs)
+        text = "".join(b.text for b in resp.content if b.type == "text")
+        tool_calls = [{"id": b.id, "name": b.name, "arguments": b.input}
+                      for b in resp.content if b.type == "tool_use"]
+        return text, tool_calls, resp
+    elif _PROVIDER == "openai":
+        oai_msgs = [{"role": "system", "content": system}] + messages if system else list(messages)
+        kwargs = {"model": MODEL, "max_tokens": max_tokens, "messages": oai_msgs}
+        if tools:
+            kwargs["tools"] = [
+                {"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["parameters"]}}
+                for t in tools
+            ]
+        resp = _llm_client.chat.completions.create(**kwargs)
+        choice = resp.choices[0]
+        text = choice.message.content or ""
+        tool_calls = []
+        if choice.message.tool_calls:
+            for tc in choice.message.tool_calls:
+                tool_calls.append({"id": tc.id, "name": tc.function.name,
+                                   "arguments": json.loads(tc.function.arguments)})
+        return text, tool_calls, resp
+
+def _llm_serialize_assistant(raw_resp):
+    if _PROVIDER == "anthropic":
+        content = []
+        for b in raw_resp.content:
+            if b.type == "text": content.append({"type": "text", "text": b.text})
+            elif b.type == "tool_use": content.append({"type": "tool_use", "id": b.id, "name": b.name, "input": b.input})
+        return {"role": "assistant", "content": content}
+    elif _PROVIDER == "openai":
+        choice = raw_resp.choices[0]
+        msg = {"role": "assistant"}
+        if choice.message.content: msg["content"] = choice.message.content
+        if choice.message.tool_calls:
+            msg["tool_calls"] = [
+                {"id": tc.id, "type": "function", "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                for tc in choice.message.tool_calls
+            ]
+        return msg
+
+def _llm_format_tool_results(results):
+    # results = [{"call_id": ..., "output": ...}]
+    if _PROVIDER == "anthropic":
+        return [{"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": r["call_id"], "content": r["output"]}
+            for r in results
+        ]}]
+    elif _PROVIDER == "openai":
+        return [{"role": "tool", "tool_call_id": r["call_id"], "content": r["output"]} for r in results]
 
 # ---- Verify ----
 resp = FHIR_SESSION.get(f"{FHIR_BASE}/metadata", params={"_format": "json"}, timeout=20)
@@ -102,14 +180,15 @@ if resp.status_code != 200:
 count_resp = FHIR_SESSION.get(f"{FHIR_BASE}/Patient", params={"_summary": "count", "_format": "json"}, timeout=20)
 patient_count = count_resp.json().get("total", "unknown")
 
+_provider_label = f"{AI_PROVIDER} ({MODEL})"
 display(Markdown(
     "## Connection Status\n\n"
     "| Component | Status | Detail |\n"
     "|-----------|--------|--------|\n"
     f"| FHIR Server | Connected | `{FHIR_BASE.split('//')[1].split('/')[0]}` · FHIR R4 |\n"
     f"| Patient records | {patient_count} | Synthetic cohort with diabetes phenotypes |\n"
-    f"| AI Agent | {'Ready' if _anthropic_client else 'Not configured'} "
-    f"| {'Claude — for Activity 2' if _anthropic_client else 'Add ANTHROPIC_API_KEY in Secrets (see above)'} |\n"
+    f"| AI Agent | {'Ready' if _llm_client else 'Not configured'} "
+    f"| {_provider_label + ' — for Activity 2' if _llm_client else 'Add ' + _secret_name + ' in Secrets (see above)'} |\n"
 ))
 """.strip()
 
@@ -291,17 +370,52 @@ def _show_query(fhir_url, resource_type=None):
 
 # === Ground truth ===
 def _get_ground_truth(patient_id):
+    # Complexity assessment ground truth — requires multiple data points.
+    # Categories: Routine, Moderate complexity, High complexity, No diabetes
     _, conds = _search_all_conditions_raw(patient_id)
     codes = [r.get("code", "") for r in conds.get("results", [])]
-    if "46635009" in codes:
-        return "Type 1"
-    if "44054006" in codes:
-        return "Type 2"
+    has_diabetes = ("46635009" in codes or "44054006" in codes)
+    has_ckd = "709044004" in codes
+    if not has_diabetes:
+        return "No diabetes"
+    # Get HbA1c
+    _, hba1c_result = _search_observations(patient_id, "4548-4")
+    hba1c_val = hba1c_result["results"][0]["value"] if hba1c_result["results"] else None
+    # Get eGFR
+    _, egfr_result = _search_observations(patient_id, "33914-3")
+    egfr_val = egfr_result["results"][0]["value"] if egfr_result["results"] else None
+    # Get UACR
+    _, uacr_result = _search_observations(patient_id, "14959-1")
+    uacr_val = uacr_result["results"][0]["value"] if uacr_result["results"] else None
+    # Get medications
+    _, med_result = _search_medications(patient_id)
+    med_count = len(med_result.get("results", []))
+    # Count complexity factors
+    factors = 0
+    if hba1c_val is not None and hba1c_val > 7.5:
+        factors += 1
+    if hba1c_val is not None and hba1c_val > 9.0:
+        factors += 1  # urgently poor control adds extra weight
+    if egfr_val is not None and egfr_val < 60:
+        factors += 1
+    if uacr_val is not None and uacr_val > 30:
+        factors += 1
+    if uacr_val is not None and uacr_val > 300:
+        factors += 1  # macroalbuminuria adds extra weight
+    if med_count >= 3:
+        factors += 1
+    if has_ckd:
+        factors += 1
+    if factors >= 3:
+        return "High complexity"
+    if factors >= 1:
+        return "Moderate complexity"
+    return "Routine"
     return "No diabetes"
 
 # === State ===
 _state = {
-    "question": "Classify this patient: Type 1 diabetes, Type 2 diabetes, or no diabetes?",
+    "question": "Assess this patient's diabetes management complexity: Routine, Moderate, High, or No diabetes?",
     "num_cases": 0,
     "case_patients": [],
     "current_case_idx": 0,
@@ -315,24 +429,10 @@ _state = {
     "agent_prompt": "",
 }
 
-def _evidence_gaps():
-    ev = _state["evidence"]
-    gaps = []
-    if "demographics" not in ev:
-        gaps.append(("Demographics — age at onset", "Patient"))
-    if "conditions" not in ev:
-        gaps.append(("Problem list — existing diagnoses", "Condition"))
-    if "c_peptide" not in ev:
-        gaps.append(("C-peptide — direct T1/T2 differentiator", "Observation"))
-    if "hba1c" not in ev:
-        gaps.append(("HbA1c — glycemic control", "Observation"))
-    if "bmi" not in ev:
-        gaps.append(("BMI — insulin resistance context", "Observation"))
-    if "egfr" not in ev:
-        gaps.append(("eGFR — kidney function / CKD staging", "Observation"))
-    if "treatment_regimen" not in ev:
-        gaps.append(("Treatment regimen — insulin-only vs oral agents", "MedicationRequest"))
-    return gaps
+_AVAILABLE_QUERIES = 8  # demographics, conditions, hba1c, egfr, uacr, c_peptide, medications, encounters
+
+def _evidence_count():
+    return len(_state["evidence"])
 
 def _render_dashboard():
     lines = ["---", "## Your Agent Dashboard", ""]
@@ -367,7 +467,8 @@ def _render_dashboard():
                 else:
                     lines.append("| Encounters | `Encounter` | None found |")
             else:
-                lab_label = key.replace('_', ' ').title()
+                _lab_labels = {"c_peptide": "C-peptide", "hba1c": "HbA1c", "bmi": "BMI", "egfr": "eGFR", "uacr": "UACR"}
+                lab_label = _lab_labels.get(key, key.replace('_', ' ').title())
                 if isinstance(value, dict) and "latest" in value:
                     latest = value["latest"]
                     if latest:
@@ -376,13 +477,11 @@ def _render_dashboard():
                         lines.append(f"| {lab_label} | `Observation` | No results found |")
         lines.append("")
 
-    gaps = _evidence_gaps()
-    lines.append("### Still Needed")
-    if gaps:
-        for label, resource in gaps:
-            lines.append(f"- {label} — *query* `{resource}`")
-    else:
-        lines.append("*All key evidence categories covered. You may be ready to classify.*")
+    _collected = _evidence_count()
+    lines.append(f"### Evidence: {_collected} of {_AVAILABLE_QUERIES} query types used")
+    lines.append("")
+    lines.append("*Review your evidence above. When you are confident in your assessment, "
+                 "use the **Classify** cell below.*")
     lines.append("")
 
     lines.append("### Query Log")
@@ -396,30 +495,33 @@ def _render_dashboard():
     lines.append("\n---")
     return "\n".join(lines)
 
-# === Claude tool schemas (for the AI agent in Activity 2) ===
-CLAUDE_TOOLS = [
+# === Tool schemas (OpenAI-canonical format, converted per provider in adapter) ===
+AGENT_TOOLS = [
     {
+        "type": "function",
         "name": "get_patient",
         "description": (
             "FHIR query: GET /Patient/{id}. Returns demographics (age, gender, DOB). "
             "Age at onset is clinically relevant: younger onset leans toward Type 1."
         ),
-        "input_schema": {
+        "parameters": {
             "type": "object",
             "properties": {"patient_id": {"type": "string"}},
             "required": ["patient_id"],
+            "additionalProperties": False,
         },
     },
     {
+        "type": "function",
         "name": "search_observations",
         "description": (
             "FHIR query: GET /Observation?subject=Patient/{id}&code={loinc}. "
             "Query ONE lab at a time to reason about each result before deciding the next query. "
-            "Key LOINC codes: 1986-9 C-peptide (direct T1/T2 differentiator — low means beta-cell "
-            "destruction), 4548-4 HbA1c (glycemic control, severity not type), 39156-5 BMI "
-            "(insulin resistance context), 33914-3 eGFR (kidney function / CKD staging)."
+            "Key LOINC codes: 4548-4 HbA1c (glycemic control), 33914-3 eGFR (kidney function / "
+            "CKD staging), 14959-1 UACR (early kidney damage — can detect damage even when eGFR "
+            "is normal), 1986-9 C-peptide (endogenous insulin production)."
         ),
-        "input_schema": {
+        "parameters": {
             "type": "object",
             "properties": {
                 "patient_id": {"type": "string"},
@@ -427,52 +529,59 @@ CLAUDE_TOOLS = [
                 "max_results": {"type": "integer", "default": 5},
             },
             "required": ["patient_id", "loinc_code"],
+            "additionalProperties": False,
         },
     },
     {
+        "type": "function",
         "name": "search_medications",
         "description": (
             "FHIR query: GET /MedicationRequest?subject=Patient/{id}. Returns treatment regimen. "
             "Insulin-only pattern suggests Type 1; oral agents (metformin, sulfonylureas) suggest Type 2."
         ),
-        "input_schema": {
+        "parameters": {
             "type": "object",
             "properties": {
                 "patient_id": {"type": "string"},
                 "max_results": {"type": "integer", "default": 10},
             },
             "required": ["patient_id"],
+            "additionalProperties": False,
         },
     },
     {
+        "type": "function",
         "name": "search_all_conditions",
         "description": (
             "FHIR query: GET /Condition?subject=Patient/{id}. Returns full problem list with "
             "SNOMED codes and clinical status. Note: diabetes-specific diagnoses have been "
             "replaced to prevent answer leakage — use labs and medications for classification."
         ),
-        "input_schema": {
+        "parameters": {
             "type": "object",
             "properties": {
                 "patient_id": {"type": "string"},
                 "max_results": {"type": "integer", "default": 20},
             },
             "required": ["patient_id"],
+            "additionalProperties": False,
         },
     },
     {
+        "type": "function",
         "name": "search_encounters",
         "description": (
             "FHIR query: GET /Encounter?subject=Patient/{id}. Returns visit history. "
             "Care pattern context — frequency and type of visits."
         ),
-        "input_schema": {
+        "parameters": {
             "type": "object",
             "properties": {
                 "patient_id": {"type": "string"},
                 "max_results": {"type": "integer", "default": 10},
             },
             "required": ["patient_id"],
+            "additionalProperties": False,
         },
     },
 ]
@@ -521,7 +630,7 @@ def _tool_to_human_label(fn_name, fn_args):
             "4548-4": "Get HbA1c",
             "1986-9": "Get C-peptide",
             "39156-5": "Get BMI",
-            "2160-0": "Get creatinine",
+            "2160-0": "Get Creatinine",
             "33914-3": "Get eGFR",
             "14959-1": "Get UACR",
         }
@@ -672,7 +781,7 @@ display(Markdown(f"**{len(_final_candidates)} candidates loaded.** Proceed to St
 
 CHOOSE_NUM_CASES = r"""
 #@title Step 4: Choose how many cases to work
-num_cases = 3 #@param {type:"integer"}
+num_cases = 6 #@param {type:"integer"}
 
 if "_final_candidates" not in dir() or not _final_candidates:
     display(Markdown(
@@ -707,27 +816,149 @@ else:
         "|-|------|---------|-----|--------|\n"
         f"{_case_rows}\n"
         f"**Starting with Case 1:** {_state['patient_label']}\n\n"
-        "Use **Step 5** below — query the FHIR server, then classify when ready."
+        "Use **Step 5** to query the FHIR server, then **Step 6** to classify when ready."
     ))
 """.strip()
 
 
 INVESTIGATE = r"""
-#@title Step 5: Investigate and classify (change dropdown → click Run → repeat)
-action = "Get demographics" #@param ["Get demographics", "Get problem list", "Get C-peptide", "Get HbA1c", "Get BMI", "Get eGFR", "Get treatment regimen", "Get encounters", "— CLASSIFY —", "Classify: Type 1", "Classify: Type 2", "Classify: No diabetes"]
+#@title Step 5: Query the FHIR server (change query → click Run → repeat)
+query = "Get HbA1c" #@param ["Get demographics", "Get problem list", "Get HbA1c", "Get eGFR", "Get UACR", "Get treatment regimen", "Get C-peptide", "Get encounters"]
 
-if _state["patient_id"] is None:
+if "_state" not in dir() or _state["patient_id"] is None:
     display(Markdown("**Run Step 4 first.**"))
 elif _state["current_case_idx"] >= _state["num_cases"]:
-    display(Markdown("**All cases complete.** See your results in Step 6."))
-elif action == "— CLASSIFY —":
+    display(Markdown("**All cases complete.** See your results in Step 7."))
+else:
+    # ---- Evidence gathering logic ----
+    _pid = _state["patient_id"]
+    _case_num = _state["current_case_idx"] + 1
+    _total = _state["num_cases"]
+
+    display(Markdown(f"**Case {_case_num} of {_total}:** {_state['patient_label']}"))
+
+    if query == "Get demographics":
+        _furl, _result = _get_patient(_pid)
+        _show_query(_furl, "Patient")
+        _state["evidence"]["demographics"] = _result
+        _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"Age {_result.get('age')}, {_result.get('gender')}"})
+        display(Markdown(
+            "### Demographics\n\n"
+            "| Field | Value |\n|-------|-------|\n"
+            f"| Name | {_result.get('name')} |\n"
+            f"| Age | {_result.get('age')} |\n"
+            f"| Gender | {_result.get('gender')} |\n"
+            f"| Date of Birth | {_result.get('birthDate')} |"
+        ))
+
+    elif query == "Get problem list":
+        _furl, _result = _search_all_conditions(_pid)
+        _show_query(_furl, "Condition")
+        _state["evidence"]["conditions"] = _result["results"]
+        _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"{len(_result['results'])} conditions found"})
+        if _result["results"]:
+            _rows_md = "\n".join(f"| {r['condition']} | {r['code']} | {r['clinical_status']} |" for r in _result["results"][:12])
+            display(Markdown(f"### Problem List\n\n| Condition | SNOMED Code | Status |\n|-----------|-------------|--------|\n{_rows_md}"))
+        else:
+            display(Markdown("### Problem List\n\n*No conditions found for this patient.*"))
+
+    elif query == "Get C-peptide":
+        _furl, _result = _search_observations(_pid, "1986-9")
+        _show_query(_furl, "Observation")
+        _latest = _result["results"][0] if _result["results"] else None
+        _state["evidence"]["c_peptide"] = {"bundle": _result, "latest": _latest}
+        if _latest:
+            _note = f"{_latest.get('value', 'N/A')} {_latest.get('unit', '')}"
+            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"C-peptide: {_note}"})
+            display(Markdown(f"### C-peptide\n\nEndogenous insulin production — context for diabetes typing.\n\n| Value | Unit | Date |\n|-------|------|------|\n| {_latest.get('value', 'N/A')} | {_latest.get('unit', '')} | {_latest.get('date', 'N/A')} |\n\n*Normal range: 1.1–4.4 ng/mL*"))
+        else:
+            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": "C-peptide: no results"})
+            display(Markdown("### C-peptide\n\n*No C-peptide results found for this patient.*"))
+
+    elif query == "Get HbA1c":
+        _furl, _result = _search_observations(_pid, "4548-4")
+        _show_query(_furl, "Observation")
+        _latest = _result["results"][0] if _result["results"] else None
+        _state["evidence"]["hba1c"] = {"bundle": _result, "latest": _latest}
+        if _latest:
+            _note = f"{_latest.get('value', 'N/A')} {_latest.get('unit', '')}"
+            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"HbA1c: {_note}"})
+            display(Markdown(f"### HbA1c\n\nGlycemic control over ~3 months.\n\n| Value | Unit | Date |\n|-------|------|------|\n| {_latest.get('value', 'N/A')} | {_latest.get('unit', '')} | {_latest.get('date', 'N/A')} |\n\n*Target: < 7.0% · Suboptimal: > 7.5% · Poor: > 9.0%*"))
+        else:
+            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": "HbA1c: no results"})
+            display(Markdown("### HbA1c\n\n*No HbA1c results found for this patient.*"))
+
+    elif query == "Get eGFR":
+        _furl, _result = _search_observations(_pid, "33914-3")
+        _show_query(_furl, "Observation")
+        _latest = _result["results"][0] if _result["results"] else None
+        _state["evidence"]["egfr"] = {"bundle": _result, "latest": _latest}
+        if _latest:
+            _note = f"{_latest.get('value', 'N/A')} {_latest.get('unit', '')}"
+            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"eGFR: {_note}"})
+            display(Markdown(f"### eGFR\n\nKidney function — key indicator of diabetes complications.\n\n| Value | Unit | Date |\n|-------|------|------|\n| {_latest.get('value', 'N/A')} | {_latest.get('unit', '')} | {_latest.get('date', 'N/A')} |\n\n*Normal: > 90 · CKD Stage 3: 30–59 · CKD Stage 4: 15–29*"))
+        else:
+            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": "eGFR: no results"})
+            display(Markdown("### eGFR\n\n*No eGFR results found for this patient.*"))
+
+    elif query == "Get UACR":
+        _furl, _result = _search_observations(_pid, "14959-1")
+        _show_query(_furl, "Observation")
+        _latest = _result["results"][0] if _result["results"] else None
+        _state["evidence"]["uacr"] = {"bundle": _result, "latest": _latest}
+        if _latest:
+            _note = f"{_latest.get('value', 'N/A')} {_latest.get('unit', '')}"
+            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"UACR: {_note}"})
+            display(Markdown(f"### UACR (Urine Albumin-to-Creatinine Ratio)\n\nEarly kidney damage marker — can detect damage even when eGFR is normal.\n\n| Value | Unit | Date |\n|-------|------|------|\n| {_latest.get('value', 'N/A')} | {_latest.get('unit', '')} | {_latest.get('date', 'N/A')} |\n\n*Normal: < 30 mg/g · Microalbuminuria: 30–300 · Macroalbuminuria: > 300*"))
+        else:
+            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": "UACR: no results"})
+            display(Markdown("### UACR\n\n*No UACR results found for this patient.*"))
+
+    elif query == "Get treatment regimen":
+        _furl, _result = _search_medications(_pid)
+        _show_query(_furl, "MedicationRequest")
+        _state["evidence"]["treatment_regimen"] = _result["results"]
+        _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"{len(_result['results'])} medications"})
+        if _result["results"]:
+            _rows_md = "\n".join(f"| {r['medication']} | {r['status']} | {r.get('authoredOn', 'N/A')} |" for r in _result["results"][:10])
+            display(Markdown(f"### Treatment Regimen\n\nMedication complexity — number and type of agents.\n\n| Medication | Status | Date |\n|------------|--------|------|\n{_rows_md}"))
+        else:
+            display(Markdown("### Treatment Regimen\n\n*No medications found.*"))
+
+    elif query == "Get encounters":
+        _furl, _result = _search_encounters(_pid)
+        _show_query(_furl, "Encounter")
+        _state["evidence"]["encounters"] = _result["results"]
+        _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"{len(_result['results'])} encounters"})
+        if _result["results"]:
+            _rows_md = "\n".join(f"| {r.get('type', 'N/A')} | {r.get('class', '')} | {r.get('status', '')} | {r.get('period_start', 'N/A')} |" for r in _result["results"][:8])
+            display(Markdown(f"### Encounters\n\n| Type | Class | Status | Date |\n|------|-------|--------|------|\n{_rows_md}"))
+        else:
+            display(Markdown("### Encounters\n\n*No encounters found.*"))
+
+    display(Markdown(_render_dashboard()))
+""".strip()
+
+
+CLASSIFY = r"""
+#@title Step 6: Classify this patient
+classification = "Routine" #@param ["Routine", "Moderate complexity", "High complexity", "No diabetes"]
+confirm = "No, let me query more" #@param ["No, let me query more", "Yes, submit my answer"]
+
+if "_state" not in dir() or _state["patient_id"] is None:
+    display(Markdown("**Run Step 4 first.**"))
+elif _state["current_case_idx"] >= _state["num_cases"]:
+    display(Markdown("**All cases complete.** See your results in Step 7."))
+elif confirm != "Yes, submit my answer":
+    _collected = len(_state.get("evidence", {}))
     display(Markdown(
-        "**Pick a classification** — select *Classify: Type 1*, *Classify: Type 2*, "
-        "or *Classify: No diabetes* from the dropdown, then click Run."
+        f"**Not submitted.** You have gathered {_collected} evidence types so far.\n\n"
+        "Go back to **Step 5** to query more, or change **confirm** to "
+        "**\"Yes, submit my answer\"** and click Run."
     ))
-elif action.startswith("Classify: "):
+    display(Markdown(_render_dashboard()))
+else:
     # ---- Classification logic ----
-    classification = action.replace("Classify: ", "")
     _queries_used = len([h for h in _state["history"] if h.get("fhir_query") != "—"])
     _correct_answer = _state["correct_answer"]
     _is_correct = (classification == _correct_answer)
@@ -780,7 +1011,7 @@ elif action.startswith("Classify: "):
             f"{_progress_rows}\n"
             f"**Next — Case {_state['current_case_idx']+1}:** "
             f"{_state['patient_label']}\n\n"
-            "Change the dropdown back to a query action and keep going."
+            "Go back to **Step 5** to start querying this patient."
         ))
     else:
         # All cases done
@@ -798,124 +1029,16 @@ elif action.startswith("Classify: "):
             f"{_progress_rows}\n"
             f"**Score: {_num_correct}/{len(_state['human_results'])} correct ({_pct:.0f}%), "
             f"{_avg_q:.1f} avg queries**\n\n"
-            "See full results in **Step 6**, then move to **Activity 2** (Step 7)."
+            "See full results in **Step 7**, then move to **Activity 2** (Step 8)."
         ))
-else:
-    # ---- Evidence gathering logic ----
-    _pid = _state["patient_id"]
-    _case_num = _state["current_case_idx"] + 1
-    _total = _state["num_cases"]
-
-    display(Markdown(f"**Case {_case_num} of {_total}:** {_state['patient_label']}"))
-
-    if action == "Get demographics":
-        _furl, _result = _get_patient(_pid)
-        _show_query(_furl, "Patient")
-        _state["evidence"]["demographics"] = _result
-        _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"Age {_result.get('age')}, {_result.get('gender')}"})
-        display(Markdown(
-            "### Demographics\n\n"
-            "| Field | Value |\n|-------|-------|\n"
-            f"| Name | {_result.get('name')} |\n"
-            f"| Age | {_result.get('age')} |\n"
-            f"| Gender | {_result.get('gender')} |\n"
-            f"| Date of Birth | {_result.get('birthDate')} |"
-        ))
-
-    elif action == "Get problem list":
-        _furl, _result = _search_all_conditions(_pid)
-        _show_query(_furl, "Condition")
-        _state["evidence"]["conditions"] = _result["results"]
-        _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"{len(_result['results'])} conditions found"})
-        if _result["results"]:
-            _rows_md = "\n".join(f"| {r['condition']} | {r['code']} | {r['clinical_status']} |" for r in _result["results"][:12])
-            display(Markdown(f"### Problem List\n\n| Condition | SNOMED Code | Status |\n|-----------|-------------|--------|\n{_rows_md}"))
-        else:
-            display(Markdown("### Problem List\n\n*No conditions found for this patient.*"))
-
-    elif action == "Get C-peptide":
-        _furl, _result = _search_observations(_pid, "1986-9")
-        _show_query(_furl, "Observation")
-        _latest = _result["results"][0] if _result["results"] else None
-        _state["evidence"]["c_peptide"] = {"bundle": _result, "latest": _latest}
-        if _latest:
-            _note = f"{_latest.get('value', 'N/A')} {_latest.get('unit', '')}"
-            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"C-peptide: {_note}"})
-            display(Markdown(f"### C-peptide\n\nDirect T1/T2 differentiator — low values indicate beta-cell destruction (Type 1).\n\n| Value | Unit | Date |\n|-------|------|------|\n| {_latest.get('value', 'N/A')} | {_latest.get('unit', '')} | {_latest.get('date', 'N/A')} |\n\n*Normal range: 1.1–4.4 ng/mL*"))
-        else:
-            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": "C-peptide: no results"})
-            display(Markdown("### C-peptide\n\n*No C-peptide results found for this patient.*"))
-
-    elif action == "Get HbA1c":
-        _furl, _result = _search_observations(_pid, "4548-4")
-        _show_query(_furl, "Observation")
-        _latest = _result["results"][0] if _result["results"] else None
-        _state["evidence"]["hba1c"] = {"bundle": _result, "latest": _latest}
-        if _latest:
-            _note = f"{_latest.get('value', 'N/A')} {_latest.get('unit', '')}"
-            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"HbA1c: {_note}"})
-            display(Markdown(f"### HbA1c\n\nGlycemic control over ~3 months — indicates severity, not type.\n\n| Value | Unit | Date |\n|-------|------|------|\n| {_latest.get('value', 'N/A')} | {_latest.get('unit', '')} | {_latest.get('date', 'N/A')} |\n\n*Target: < 7.0% · Poor control: > 7.5%*"))
-        else:
-            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": "HbA1c: no results"})
-            display(Markdown("### HbA1c\n\n*No HbA1c results found for this patient.*"))
-
-    elif action == "Get BMI":
-        _furl, _result = _search_observations(_pid, "39156-5")
-        _show_query(_furl, "Observation")
-        _latest = _result["results"][0] if _result["results"] else None
-        _state["evidence"]["bmi"] = {"bundle": _result, "latest": _latest}
-        if _latest:
-            _note = f"{_latest.get('value', 'N/A')} {_latest.get('unit', '')}"
-            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"BMI: {_note}"})
-            display(Markdown(f"### BMI\n\nInsulin resistance context — higher BMI leans toward T2, but not definitive.\n\n| Value | Unit | Date |\n|-------|------|------|\n| {_latest.get('value', 'N/A')} | {_latest.get('unit', '')} | {_latest.get('date', 'N/A')} |\n\n*Overweight: 25–30 · Obese: > 30*"))
-        else:
-            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": "BMI: no results"})
-            display(Markdown("### BMI\n\n*No BMI results found for this patient.*"))
-
-    elif action == "Get eGFR":
-        _furl, _result = _search_observations(_pid, "33914-3")
-        _show_query(_furl, "Observation")
-        _latest = _result["results"][0] if _result["results"] else None
-        _state["evidence"]["egfr"] = {"bundle": _result, "latest": _latest}
-        if _latest:
-            _note = f"{_latest.get('value', 'N/A')} {_latest.get('unit', '')}"
-            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"eGFR: {_note}"})
-            display(Markdown(f"### eGFR\n\nKidney function / CKD staging — complications context.\n\n| Value | Unit | Date |\n|-------|------|------|\n| {_latest.get('value', 'N/A')} | {_latest.get('unit', '')} | {_latest.get('date', 'N/A')} |\n\n*Normal: > 90 · CKD Stage 3: 30–59 · CKD Stage 4: 15–29*"))
-        else:
-            _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": "eGFR: no results"})
-            display(Markdown("### eGFR\n\n*No eGFR results found for this patient.*"))
-
-    elif action == "Get treatment regimen":
-        _furl, _result = _search_medications(_pid)
-        _show_query(_furl, "MedicationRequest")
-        _state["evidence"]["treatment_regimen"] = _result["results"]
-        _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"{len(_result['results'])} medications"})
-        if _result["results"]:
-            _rows_md = "\n".join(f"| {r['medication']} | {r['status']} | {r.get('authoredOn', 'N/A')} |" for r in _result["results"][:10])
-            display(Markdown(f"### Treatment Regimen\n\nInsulin-only suggests T1; oral agents (metformin, sulfonylureas) suggest T2.\n\n| Medication | Status | Date |\n|------------|--------|------|\n{_rows_md}"))
-        else:
-            display(Markdown("### Treatment Regimen\n\n*No medications found.*"))
-
-    elif action == "Get encounters":
-        _furl, _result = _search_encounters(_pid)
-        _show_query(_furl, "Encounter")
-        _state["evidence"]["encounters"] = _result["results"]
-        _state["history"].append({"step": len(_state["history"]) + 1, "fhir_query": _furl, "note": f"{len(_result['results'])} encounters"})
-        if _result["results"]:
-            _rows_md = "\n".join(f"| {r.get('type', 'N/A')} | {r.get('class', '')} | {r.get('status', '')} | {r.get('period_start', 'N/A')} |" for r in _result["results"][:8])
-            display(Markdown(f"### Encounters\n\n| Type | Class | Status | Date |\n|------|-------|--------|------|\n{_rows_md}"))
-        else:
-            display(Markdown("### Encounters\n\n*No encounters found.*"))
-
-    display(Markdown(_render_dashboard()))
 """.strip()
 
 
 ACTIVITY1_RESULTS = r"""
-#@title Step 6: Your results
+#@title Step 7: Your results
 
 if not _state.get("human_results"):
-    display(Markdown("**Complete Activity 1 first** (Step 5)."))
+    display(Markdown("**Complete Activity 1 first** (Steps 5-6)."))
 else:
     _h = _state["human_results"]
     _rows = ""
@@ -938,40 +1061,40 @@ else:
         f"{_rows}\n"
         f"### Grade: {_num_correct}/{len(_h)} correct ({_pct:.0f}%) · {_avg_q:.1f} avg queries\n\n"
         "---\n\n"
-        "Now move to **Activity 2** (Step 7) — write a prompt and see if the AI agent "
+        "Now move to **Activity 2** (Step 8) — write a prompt and see if the AI agent "
         "can do better (or worse)."
     ))
 """.strip()
 
 
 PROMPT_EDITOR = r"""
-#@title Step 7: Write your AI prompt
-agent_prompt = "You are a clinical data assistant classifying diabetes patients using FHIR queries. Classify each patient as Type 1 diabetes, Type 2 diabetes, or No diabetes. Use the minimum queries needed to reach confidence. Prefer direct evidence (C-peptide, medications) over indirect (BMI)." #@param {type:"string"}
+#@title Step 8: Write your AI prompt
+agent_prompt = "You are a clinical data assistant assessing diabetes management complexity using FHIR queries. Classify each patient as Routine, Moderate complexity, High complexity, or No diabetes. Consider glycemic control, kidney function, and medication regimen. Use enough queries to be confident." #@param {type:"string"}
 
 _state["agent_prompt"] = agent_prompt
 
 display(Markdown(
     "## Activity 2: Write Your AI Prompt\n\n"
-    "This prompt tells the AI agent how to approach the classification task. "
+    "This prompt tells the AI agent how to approach the complexity assessment task. "
     f"It will use this prompt for all {_state.get('num_cases', '?')} cases.\n\n"
     f"**Your prompt:**\n\n> {agent_prompt[:400]}{'...' if len(agent_prompt) > 400 else ''}\n\n"
     "**Ideas to try:**\n"
-    "- Emphasize efficiency: *\"never query more than 3 tools\"*\n"
-    "- Change priorities: *\"always start with C-peptide\"*\n"
-    "- Add constraints: *\"ignore BMI — it's not diagnostic\"*\n"
-    "- Change persona: *\"you are an endocrinologist\"*\n\n"
-    "Run **Step 8** to let the agent work. You can come back here, "
-    "edit the prompt, and re-run Step 8 to compare different prompts."
+    "- Emphasize thoroughness: *\"always check kidney function before classifying\"*\n"
+    "- Change priorities: *\"start with HbA1c to assess control first\"*\n"
+    "- Add constraints: *\"never classify without checking at least 3 data sources\"*\n"
+    "- Change persona: *\"you are an endocrinologist reviewing a referral list\"*\n\n"
+    "Run **Step 9** to let the agent work. You can come back here, "
+    "edit the prompt, and re-run Step 9 to compare different prompts."
 ))
 """.strip()
 
 
 RUN_AI_AGENT = r"""
-#@title Step 8: Run the AI agent on all cases
+#@title Step 9: Run the AI agent on all cases
 
 if not _state.get("case_patients"):
     display(Markdown("**Run Steps 3-4 first.**"))
-elif _anthropic_client is None:
+elif _llm_client is None:
     display(Markdown("**AI Agent requires an API key.** See the setup section above."))
 elif len(_state.get("human_results", [])) < _state.get("num_cases", 0):
     display(Markdown(
@@ -996,17 +1119,24 @@ else:
 
         _agent_question = (
             f"Review patient {_agent_pid} ({_agent_label}). "
-            "Classify as Type 1 diabetes, Type 2 diabetes, or no diabetes. "
+            "Assess diabetes management complexity: Routine, Moderate complexity, "
+            "High complexity, or No diabetes. "
             "Use the FHIR query tools. Cite specific findings."
         )
         _agent_system = (
             "You are a clinical data assistant querying a FHIR server with synthetic "
             "patient data. You work as an agent: query one tool at a time, reason about "
             "the result, then decide your next step.\n\n"
-            "CLASSIFICATION: Type 1 diabetes / Type 2 diabetes / No diabetes\n\n"
+            "CLASSIFICATION CATEGORIES:\n"
+            "- Routine: diabetes present, well-controlled, no significant complications\n"
+            "- Moderate complexity: one or more complicating factors (suboptimal control, "
+            "early kidney involvement, multi-drug regimen)\n"
+            "- High complexity: multiple converging red flags demanding specialist attention\n"
+            "- No diabetes: patient does not have a diabetes diagnosis\n\n"
+            "KEY THRESHOLDS: HbA1c >7.5% suboptimal, >9% poor. eGFR <60 = CKD stage 3+. "
+            "UACR >30 = microalbuminuria, >300 = macroalbuminuria.\n\n"
             "The patient pool includes metabolic syndrome patients who do NOT have "
-            "diabetes. Key signals: normal C-peptide (1.1–4.4 ng/mL), no diabetes "
-            "medications, normal HbA1c (< 6.5%) = No diabetes.\n\n"
+            "diabetes. Verify the diagnosis before classifying.\n\n"
             "After EACH tool result, state your current assessment and next step.\n"
             "STOP when confident. Be concise.\n\n"
             "STUDENT PROMPT (follow this guidance):\n" + _prompt
@@ -1017,51 +1147,44 @@ else:
         _final_text = "(max steps reached)"
 
         for _step in range(1, 9):
-            _resp = _anthropic_client.messages.create(
-                model=MODEL, max_tokens=4096, system=_agent_system,
-                messages=_agent_messages, tools=CLAUDE_TOOLS,
+            _text, _tool_calls, _raw_resp = _llm_create(
+                _agent_messages, _agent_system, AGENT_TOOLS,
             )
-            _tblocks = [b for b in _resp.content if b.type == "tool_use"]
-            _text_blocks = [b.text for b in _resp.content if b.type == "text" and b.text.strip()]
 
-            if not _tblocks:
-                _final_text = "".join(b.text for b in _resp.content if hasattr(b, "text"))
+            if not _tool_calls:
+                _final_text = _text
                 break
 
-            for _reasoning in _text_blocks:
-                display(Markdown(f"> {_reasoning.replace(chr(10), chr(10) + '> ')}"))
+            if _text.strip():
+                display(Markdown(f"> {_text.strip().replace(chr(10), chr(10) + '> ')}"))
 
-            _acontent = []
-            for _b in _resp.content:
-                if _b.type == "text":
-                    _acontent.append({"type": "text", "text": _b.text})
-                elif _b.type == "tool_use":
-                    _acontent.append({"type": "tool_use", "id": _b.id, "name": _b.name, "input": _b.input})
-            _agent_messages.append({"role": "assistant", "content": _acontent})
+            _agent_messages.append(_llm_serialize_assistant(_raw_resp))
 
-            _tool_results = []
-            for _tb in _tblocks:
-                _fhir_display = _tool_to_fhir_display(_tb.name, _tb.input)
-                _tr = _tool_runner(_tb.name, _tb.input)
-                _result_summary = _summarize_result(_tb.name, _tb.input, _tr)
-                _human_label = _tool_to_human_label(_tb.name, _tb.input)
+            _raw_results = []
+            for _tc in _tool_calls:
+                _fhir_display = _tool_to_fhir_display(_tc["name"], _tc["arguments"])
+                _tr = _tool_runner(_tc["name"], _tc["arguments"])
+                _result_summary = _summarize_result(_tc["name"], _tc["arguments"], _tr)
+                _human_label = _tool_to_human_label(_tc["name"], _tc["arguments"])
                 _agent_tool_log.append({"step": _step, "action": _human_label, "fhir": _fhir_display, "result": _result_summary})
                 display(Markdown(f"**Step {_step}: {_human_label}** → {_result_summary}"))
-                _tool_results.append({
-                    "type": "tool_result", "tool_use_id": _tb.id,
-                    "content": json.dumps(_tr, default=str),
+                _raw_results.append({
+                    "call_id": _tc["id"],
+                    "output": json.dumps(_tr, default=str),
                 })
-            _agent_messages.append({"role": "user", "content": _tool_results})
+            _agent_messages.extend(_llm_format_tool_results(_raw_results))
 
         # Extract classification
         _agent_classification = "Unclear"
         _fl = _final_text.lower()
         if "no diabetes" in _fl:
             _agent_classification = "No diabetes"
-        elif "type 1" in _fl:
-            _agent_classification = "Type 1"
-        elif "type 2" in _fl:
-            _agent_classification = "Type 2"
+        elif "high complexity" in _fl or "high-complexity" in _fl:
+            _agent_classification = "High complexity"
+        elif "moderate complexity" in _fl or "moderate-complexity" in _fl:
+            _agent_classification = "Moderate complexity"
+        elif "routine" in _fl:
+            _agent_classification = "Routine"
 
         _correct_answer = _get_ground_truth(_agent_pid)
         _is_correct = (_agent_classification == _correct_answer)
@@ -1114,13 +1237,13 @@ else:
         "| Run | Prompt | Accuracy | Avg Queries |\n"
         "|-----|--------|----------|-------------|\n"
         f"{_run_rows}\n"
-        "To try a different prompt, go back to **Step 7**, edit it, and re-run this cell."
+        "To try a different prompt, go back to **Step 8**, edit it, and re-run this cell."
     ))
 """.strip()
 
 
 SUMMARY = r"""
-#@title Step 9: Summary
+#@title Step 10: Summary
 
 if not _state.get("human_results"):
     display(Markdown("**Complete Activity 1 first.**"))
@@ -1187,9 +1310,10 @@ else:
         "and query count? Which prompt worked best?\n"
         "3. **Strategy differences:** Did you and the AI query the same resources? "
         "In what order?\n"
-        "4. **The 'no diabetes' trap:** Which patients were hardest? What evidence "
-        "distinguishes metabolic syndrome from actual diabetes?\n"
-        "5. **FHIR resource value:** Which resource type mattered most?\n"
+        "4. **Hidden complexity:** Were there patients who looked simple at first "
+        "but turned out to be more complex after additional queries? What did you miss?\n"
+        "5. **The boundary cases:** Which patients were hardest to classify? "
+        "What made the Routine/Moderate/High boundaries ambiguous?\n"
         "6. **The agent loop:** *observe → decide → act → update → repeat.* "
         "What makes the 'when to stop' decision hard?\n"
     ))
@@ -1201,13 +1325,13 @@ else:
 # ===================================================================
 
 INTRO = [
-    "# You Are the Agent: A Clinical Classification Game\n",
+    "# You Are the Agent: A Clinical Complexity Assessment Game\n",
     "\n",
     "This is a game designed to teach you two things: **how AI agents work** and "
     "**how FHIR queries access clinical data**.\n",
     "\n",
-    "You'll classify synthetic patients as Type 1 diabetes, Type 2 diabetes, or "
-    "no diabetes. Your tools are **FHIR queries** — structured requests to an "
+    "You'll assess the **diabetes management complexity** of synthetic patients. "
+    "Your tools are **FHIR queries** — structured requests to an "
     "electronic health record server.\n",
     "\n",
     "**The game has two activities:**\n",
@@ -1252,26 +1376,22 @@ CLINICAL_SCENARIO = [
     "## The Clinical Scenario\n",
     "\n",
     "**Setting:** You are an informatics fellow reviewing a cohort of working-age adults "
-    "(age ≤ 50) with a diabetes diagnosis in a synthetic FHIR server.\n",
+    "(age ≤ 50) from a synthetic FHIR server. Your job is to assess each patient's "
+    "**diabetes management complexity**.\n",
     "\n",
-    "**Problem:** Not every patient with metabolic risk factors has diabetes. The pool "
-    "includes patients with diabetes (Type 1 and Type 2) *and* patients with metabolic "
-    "syndrome who do not have diabetes. Accurate classification matters for management.\n",
+    "**Problem:** The cohort includes patients across the diabetes–CKD spectrum — from "
+    "well-controlled early diabetes to multi-system complexity — plus patients with "
+    "metabolic syndrome who do not have diabetes at all. No single data point tells you "
+    "the whole story.\n",
     "\n",
-    "**Your task:** Query the FHIR server and decide:\n",
-    "- **Type 1 diabetes** — evidence supports autoimmune diabetes\n",
-    "- **Type 2 diabetes** — evidence supports insulin resistance pattern\n",
-    "- **No diabetes** — metabolic risk factors but no actual diabetes\n",
+    "**Your task:** Query the FHIR server and classify each patient:\n",
+    "- **Routine** — diabetes present, well-controlled, no significant complications\n",
+    "- **Moderate complexity** — one or more complicating factors (suboptimal control, "
+    "early kidney involvement, complex medication regimen)\n",
+    "- **High complexity** — multiple converging red flags demanding specialist attention\n",
+    "- **No diabetes** — metabolic risk factors but no diabetes diagnosis\n",
     "\n",
     "The game tracks both **accuracy** and **query count**.\n",
-    "\n",
-    "**Key evidence to look for:**\n",
-    "- **C-peptide** (low → T1, normal/high → T2) — the most direct differentiator (`Observation` LOINC `1986-9`)\n",
-    "- **Treatment regimen** (insulin-only vs. oral agents) — strong T1/T2 signal (`MedicationRequest`)\n",
-    "- **BMI** (lower → T1, higher → T2, not definitive) — context, not proof (`Observation` LOINC `39156-5`)\n",
-    "- **HbA1c** (glycemic control) — tells you severity, not type (`Observation` LOINC `4548-4`)\n",
-    "- **eGFR** (kidney function) — complications and CKD staging (`Observation` LOINC `33914-3`)\n",
-    "- **Diagnosis context** — existing conditions and comorbidities (`Condition`)\n",
 ]
 
 ABOUT_THE_DATA = [
@@ -1306,19 +1426,19 @@ TOOLKIT = [
     "Each tool is a **FHIR query** — a structured request to a specific resource endpoint. "
     "Choosing WHICH tool to use next is a clinical reasoning decision.\n",
     "\n",
-    "| Tool | FHIR Query | Clinical Reasoning |\n",
-    "|------|------------|--------------------|\n",
-    "| Get demographics | `GET /Patient/{id}` | Age at onset — younger leans toward T1 |\n",
-    "| Get problem list | `GET /Condition?subject=...` | Existing diagnoses, comorbidities |\n",
-    "| Get C-peptide | `GET /Observation?code=1986-9` | **Direct T1/T2 differentiator** — low = beta-cell destruction |\n",
-    "| Get HbA1c | `GET /Observation?code=4548-4` | Glycemic control (severity, not type) |\n",
-    "| Get BMI | `GET /Observation?code=39156-5` | Insulin resistance context |\n",
-    "| Get eGFR | `GET /Observation?code=33914-3` | Kidney function / CKD staging |\n",
-    "| Get treatment regimen | `GET /MedicationRequest?subject=...` | Insulin-only vs oral agents |\n",
-    "| Get encounters | `GET /Encounter?subject=...` | Care pattern context |\n",
+    "| Tool | FHIR Query | What It Returns |\n",
+    "|------|------------|----------------|\n",
+    "| Get demographics | `GET /Patient/{id}` | Age, gender, date of birth |\n",
+    "| Get problem list | `GET /Condition?subject=...` | Active diagnoses and comorbidities |\n",
+    "| Get HbA1c | `GET /Observation?code=4548-4` | Glycemic control (%) |\n",
+    "| Get eGFR | `GET /Observation?code=33914-3` | Kidney function (mL/min) |\n",
+    "| Get UACR | `GET /Observation?code=14959-1` | Urine albumin-to-creatinine ratio (mg/g) |\n",
+    "| Get treatment regimen | `GET /MedicationRequest?subject=...` | Active medications |\n",
+    "| Get C-peptide | `GET /Observation?code=1986-9` | Endogenous insulin production |\n",
+    "| Get encounters | `GET /Encounter?subject=...` | Visit history |\n",
     "\n",
-    "**Coding systems:** SNOMED CT for diagnoses (46635009 = T1DM, 44054006 = T2DM) · "
-    "LOINC for labs (4548-4 = HbA1c, 1986-9 = C-peptide, 39156-5 = BMI, 33914-3 = eGFR)\n",
+    "**Coding systems:** SNOMED CT for diagnoses · "
+    "LOINC for labs (4548-4 = HbA1c, 33914-3 = eGFR, 14959-1 = UACR, 1986-9 = C-peptide)\n",
     "\n",
     "> In Activity 2, the AI agent has **exactly these same tools**. The difference is "
     "the prompt you give it.\n",
@@ -1327,16 +1447,24 @@ TOOLKIT = [
 API_KEY_SETUP = [
     "## Before You Start: Set Up Your API Key\n",
     "\n",
-    "Activity 2 (Steps 7-8) uses **Claude**, an AI model, which "
+    "Activity 2 (Steps 7-9) uses an AI model, which "
     "requires an API key. Activity 1 (where *you* are the agent) works without one, but "
     "you'll need the key to see the AI in action.\n",
+    "\n",
+    "**Step 1 lets you choose your provider** (Anthropic or OpenAI). "
+    "Set the matching secret name in Colab:\n",
+    "\n",
+    "| Provider | Secret name |\n",
+    "|----------|-------------|\n",
+    "| Anthropic | `ANTHROPIC_API_KEY` |\n",
+    "| OpenAI | `OPENAI_API_KEY` |\n",
     "\n",
     "**How to add your API key in Colab:**\n",
     "\n",
     "1. Look at the **left sidebar** — below the file browser and variable icons, you'll "
-    "see a **key icon** (🔑). Click it to open the **Secrets** panel.\n",
+    "see a **key icon**. Click it to open the **Secrets** panel.\n",
     "2. Click **\"Add a secret\"**\n",
-    "3. Set the name to exactly: `ANTHROPIC_API_KEY`\n",
+    "3. Set the name to the secret name for your provider (see table above)\n",
     "4. Paste your API key as the value\n",
     "5. Toggle **\"Notebook access\"** to **ON**\n",
     "\n",
@@ -1347,46 +1475,89 @@ API_KEY_SETUP = [
     "Ask your instructor if you need a key.\n",
 ]
 
+CLINICAL_CONTEXT_CARD = [
+    "## Clinical Reference\n",
+    "\n",
+    "Use this as a reference while you investigate. You do not need to memorize these — "
+    "just know where to look when you need them.\n",
+    "\n",
+    "### Key Lab Values and Thresholds\n",
+    "\n",
+    "| Measure | What It Tells You | Key Thresholds |\n",
+    "|---------|-------------------|----------------|\n",
+    "| **HbA1c** | Glycemic control over ~3 months | < 7.0% target · > 7.5% suboptimal · > 9.0% urgently poor |\n",
+    "| **eGFR** | Kidney filtration rate | > 90 normal · 60–89 mildly decreased · 30–59 CKD Stage 3 · < 30 severe |\n",
+    "| **UACR** | Early kidney damage (albumin in urine) | < 30 normal · 30–300 microalbuminuria · > 300 macroalbuminuria |\n",
+    "| **C-peptide** | Endogenous insulin production | 1.1–4.4 ng/mL normal · low suggests T1D-pattern beta-cell loss |\n",
+    "\n",
+    "### Why Kidney Function Matters\n",
+    "\n",
+    "Diabetes is the leading cause of chronic kidney disease (CKD). Kidney involvement "
+    "changes management: some medications become contraindicated (e.g., metformin with "
+    "very low eGFR), specialist referral becomes important, and the overall complexity "
+    "of the patient's care increases.\n",
+    "\n",
+    "**Important:** eGFR and UACR measure different things. A patient can have a normal "
+    "eGFR but abnormal UACR — this means early kidney damage is present even though "
+    "filtration rate looks fine. Checking both gives a more complete picture.\n",
+    "\n",
+    "### The Complexity Categories\n",
+    "\n",
+    "| Category | What It Means |\n",
+    "|----------|---------------|\n",
+    "| **Routine** | Diabetes present, well-controlled (HbA1c near target), no significant kidney involvement, straightforward medication regimen |\n",
+    "| **Moderate complexity** | One or more complicating factors: suboptimal glycemic control, OR early kidney damage, OR complex multi-drug regimen — but not a convergence of multiple red flags |\n",
+    "| **High complexity** | Multiple converging factors: poor control AND kidney disease AND/OR complex regimen — demands specialist-level management |\n",
+    "| **No diabetes** | Patient does not have a diabetes diagnosis (may have metabolic risk factors) |\n",
+]
+
 ACTIVITY1_INTRO = [
     "## Activity 1: You Are the Agent\n",
     "\n",
-    "**Everything happens in Step 5 below.** The dropdown has two sections:\n",
+    "Two cells below do all the work:\n",
     "\n",
-    "1. **Query actions** (top) — run FHIR queries to gather evidence\n",
-    "2. **Classify actions** (bottom) — submit your answer when ready\n",
+    "- **Step 5 (Query)** — pick a FHIR query from the dropdown, click Run. "
+    "Repeat as many times as you want to gather evidence.\n",
+    "- **Step 6 (Classify)** — when you're ready, select your answer and confirm. "
+    "You get immediate feedback — right or wrong, no take-backs.\n",
     "\n",
-    "For each case: pick queries, run as many as you want, then select a "
-    "*Classify* option to submit your answer. You get immediate feedback — "
-    "right or wrong, no take-backs. The next case loads automatically. "
-    "Keep running the same cell for all your cases.\n",
+    "After each classification, the next case loads automatically. "
+    "Go back to Step 5 to start querying the new patient.\n",
 ]
 
 INVESTIGATE_INTRO = [
-    "## Investigate and Classify\n",
+    "## Investigate\n",
     "\n",
-    "Each time you run the cell below, you execute **one action** — either a FHIR "
-    "query or a classification. Change the **action dropdown** and click Run.\n",
+    "Each time you run the cell below, you execute **one FHIR query**. "
+    "Change the **query dropdown** and click Run.\n",
     "\n",
-    "**Query actions** show:\n",
+    "Each query shows:\n",
     "- The **FHIR request** that was made\n",
     "- The **results** with clinical context\n",
-    "- Your **Agent Dashboard** showing collected evidence, gaps, and query log\n",
+    "- Your **Agent Dashboard** showing collected evidence and query log\n",
     "\n",
-    "**Classify actions** record your answer, give immediate feedback, and load "
-    "the next case.\n",
-    "\n",
-    "> **Run this cell as many times as you want.** Each run is one turn.\n",
+    "> **Run this cell as many times as you want.** Each run is one query.\n",
     "\n",
     "> **Note:** The problem list has been modified so that diabetes-specific diagnoses "
     "don't give away the answer. Use labs and medications to build your case.\n",
 ]
 
+CLASSIFY_INTRO = [
+    "## Classify\n",
+    "\n",
+    "When you have gathered enough evidence, select your classification below "
+    "and set **confirm** to **\"Yes, submit my answer\"**.\n",
+    "\n",
+    "> **This is irreversible** — once you submit, you get feedback and move to "
+    "the next case. Make sure you've queried enough to be confident.\n",
+]
+
 ACTIVITY2_INTRO = [
     "## Activity 2: Prompt the AI Agent\n",
     "\n",
-    "Now write a prompt that tells an AI agent how to classify the same patients. "
-    "The agent has the same FHIR tools you used. You can run it, edit your "
-    "prompt, and run again to see how different instructions change accuracy "
+    "Now write a prompt that tells an AI agent how to assess the same patients' "
+    "complexity. The agent has the same FHIR tools you used. You can run it, edit "
+    "your prompt, and run again to see how different instructions change accuracy "
     "and query count.\n",
 ]
 
@@ -1416,6 +1587,7 @@ WRAPUP = [
     "**Key takeaways:**\n",
     "- The agent loop is the same whether a human or AI is running it\n",
     "- FHIR resource choice matters — some queries are more informative than others\n",
+    "- No single data point tells the whole story — complexity emerges from the combination\n",
     "- Prompt engineering directly affects agent behavior and performance\n",
     "- 'When to stop' is the hardest design decision in any agent\n",
 ]
@@ -1431,6 +1603,7 @@ cells = [
     md_cell(CLINICAL_SCENARIO),
     md_cell(ABOUT_THE_DATA),
     md_cell(TOOLKIT),
+    md_cell(CLINICAL_CONTEXT_CARD),
     md_cell(API_KEY_SETUP),
 
     form_cell(SETUP),              # Step 1
@@ -1441,13 +1614,15 @@ cells = [
     form_cell(CHOOSE_NUM_CASES),   # Step 4
     md_cell(INVESTIGATE_INTRO),
     form_cell(INVESTIGATE),        # Step 5
-    form_cell(ACTIVITY1_RESULTS),  # Step 6
+    md_cell(CLASSIFY_INTRO),
+    form_cell(CLASSIFY),           # Step 6
+    form_cell(ACTIVITY1_RESULTS),  # Step 7
 
     md_cell(ACTIVITY2_INTRO),
-    form_cell(PROMPT_EDITOR),      # Step 7
-    form_cell(RUN_AI_AGENT),       # Step 8
+    form_cell(PROMPT_EDITOR),      # Step 8
+    form_cell(RUN_AI_AGENT),       # Step 9
 
-    form_cell(SUMMARY),            # Step 9
+    form_cell(SUMMARY),            # Step 10
 
     md_cell(WRAPUP),
 ]

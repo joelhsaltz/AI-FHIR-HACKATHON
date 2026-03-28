@@ -8,6 +8,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **API-agnostic provider support (Anthropic + OpenAI).** Students select their
+  AI provider via a dropdown in Step 1. A thin 3-function adapter normalizes
+  tool calling differences between Anthropic (`claude-sonnet-4-20250514`) and
+  OpenAI (`gpt-4.1-mini`). Only the selected provider's SDK is installed.
+  Tool schemas use provider-neutral `"parameters"` format, converted at call
+  time. Both providers verified end-to-end on Vertex AI against live FHIR data.
+  This is important because many students have OpenAI keys but not Anthropic keys.
+
+### Changed
+
+- **Major documentation revision — framework framing.** Rewrote README.md,
+  SPEC.md, TECHNICAL.md, and CLAUDE.md to describe a reusable framework for
+  generating clinical education notebooks, not a single-course hackathon
+  prototype. FHIR is the constant; educational activities vary by use case.
+  - README.md: new title ("FHIR Clinical Education Notebook Framework"), two
+    quick starts (run existing / create new scenario), architecture overview
+  - SPEC.md: scenario template specification, generator script specification,
+    pedagogy framework, four agents with decision boundaries
+  - TECHNICAL.md: generator pattern documentation, inter-agent communication
+    protocol, state management, synthetic EHR pipeline, "connecting a different
+    FHIR server" guide
+  - CLAUDE.md: "How to Add a New Scenario" workflow, generator pattern,
+    clinical agent pipeline, consolidated verification sections, lessons
+    learned reference
+
+### Added
+
+- **docs/LESSONS_LEARNED.md** — institutional knowledge from trial and error:
+  infrastructure pivots (Local Jupyter → Playwright → Chrome DevTools → Vertex
+  AI), scenario design pitfalls, Colab-specific gotchas, verification standards,
+  hard rules established through failure
+- **Diabetes complexity assessment notebook** — split combined dropdown into
+  separate investigate (Step 5) and classify (Step 6) cells with confirmation
+  guard. Updated categories to Routine/Moderate/High/No diabetes. Added UACR
+  query, Clinical Context Card, neutral evidence indicator. New ground truth
+  logic uses multi-factor scoring (HbA1c, eGFR, UACR, medications, CKD).
 - **Vertex AI Workbench verification pipeline** — replaces Playwright-based
   Colab automation for notebook testing. SSH tunnel connects localhost:8888
   to a Jupyter server on an e2-standard-4 VM in us-east4. The `mcp-jupyter`

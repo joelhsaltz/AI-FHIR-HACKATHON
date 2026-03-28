@@ -31,10 +31,17 @@ def load_dotenv(env_path: Path | None = None, override: bool = True) -> dict[str
     return loaded
 
 
+DEFAULT_MODELS = {
+    "anthropic": "claude-sonnet-4-20250514",
+    "openai": "gpt-4.1-mini",
+}
+
+
 @dataclass(frozen=True)
 class Settings:
-    anthropic_api_key: str
-    anthropic_model: str
+    llm_provider: str
+    llm_api_key: str
+    llm_model: str
     fhir_base: str
     fhir_username: str
     fhir_password: str
@@ -43,9 +50,33 @@ class Settings:
 def load_settings(env_path: Path | None = None) -> Settings:
     """Load runtime settings from the workspace .env file and environment."""
     load_dotenv(env_path=env_path)
+
+    provider = os.environ.get("LLM_PROVIDER", "").lower()
+    api_key = os.environ.get("LLM_API_KEY", "")
+    model = os.environ.get("LLM_MODEL", "")
+
+    # Backward compat: fall back to ANTHROPIC_API_KEY / ANTHROPIC_MODEL
+    if not provider:
+        if os.environ.get("ANTHROPIC_API_KEY"):
+            provider = "anthropic"
+        elif os.environ.get("OPENAI_API_KEY"):
+            provider = "openai"
+        else:
+            provider = "anthropic"
+    if not api_key:
+        if provider == "anthropic":
+            api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        elif provider == "openai":
+            api_key = os.environ.get("OPENAI_API_KEY", "")
+    if not model:
+        model = os.environ.get("ANTHROPIC_MODEL", "") if provider == "anthropic" else ""
+    if not model:
+        model = DEFAULT_MODELS.get(provider, "")
+
     return Settings(
-        anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY", ""),
-        anthropic_model=os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"),
+        llm_provider=provider,
+        llm_api_key=api_key,
+        llm_model=model,
         fhir_base=os.environ.get(
             "FHIR_BASE",
             "https://lfh-fhir.eastus2.cloudapp.azure.com:9443/fhir-server/api/v4",
