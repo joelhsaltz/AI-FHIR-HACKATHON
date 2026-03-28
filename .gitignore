@@ -25,6 +25,7 @@ venv/
 .env.local
 *_key.txt
 credentials.json
+keys/
 
 # Synthetic EHR generated data (large files, backed up to Box.com)
 synthetic-ehr/generated/
