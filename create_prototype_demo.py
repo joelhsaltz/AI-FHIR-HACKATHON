@@ -209,7 +209,7 @@ patient_count = count_resp.json().get("total", "unknown")
 
 _provider_label = f"{AI_PROVIDER} ({MODEL})"
 _agent_icon = "✓ Ready" if _llm_client else "✗ Not ready"
-_agent_detail = f"{_provider_label} — for Activity 2" if _llm_client else _llm_status
+_agent_detail = f"{_provider_label} — for Activity 2" if _llm_client else ""
 display(Markdown(
     "## Connection Status\n\n"
     "| Component | Status | Detail |\n"
@@ -218,6 +218,17 @@ display(Markdown(
     f"| Patient records | {patient_count} | Synthetic cohort with diabetes phenotypes |\n"
     f"| AI Agent | {_agent_icon} | {_agent_detail} |\n"
 ))
+if not _llm_client:
+    display(Markdown(
+        "---\n"
+        "### ⚠️ AI Agent Not Available\n\n"
+        f"{_llm_status}\n\n"
+        "**Activity 1 (Steps 3–7) works without an API key** — you can still "
+        "query the FHIR server and classify patients manually. "
+        "**Activity 2 (Steps 8–9) requires a working API key** and will not run "
+        "until this is fixed.\n\n"
+        "After fixing, **re-run this cell (Step 1)** to test the connection."
+    ))
 """.strip()
 
 
