@@ -118,9 +118,14 @@ notebook's FHIR queries and logic without calling any LLM API.
 
 ### Try it in Google Colab
 
-1. Go to [colab.research.google.com](https://colab.research.google.com/)
-2. **File > Upload notebook** and select `prototypes/you_are_the_agent_demo.ipynb`
-3. Add your API key to Colab Secrets:
+**Quickest way:** Click this badge to open the notebook directly:
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/joelhsaltz/AI-FHIR-HACKATHON/blob/main/prototypes/you_are_the_agent_demo.ipynb)
+
+Or manually: go to [colab.research.google.com](https://colab.research.google.com/), click **GitHub** in the Open Notebook dialog, search for `joelhsaltz`, select the `AI-FHIR-HACKATHON` repo, and choose `prototypes/you_are_the_agent_demo.ipynb`.
+
+Then:
+1. Add your API key to Colab Secrets:
    - Click the **key icon** in the left sidebar
    - Add a secret named `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` with your key
    - Toggle **Notebook access** on

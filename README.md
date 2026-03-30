@@ -12,6 +12,7 @@ repo, point it at your FHIR server, and generate notebooks for your course.
 [![Claude Sonnet 4](https://img.shields.io/badge/Claude-Sonnet%204-purple.svg)](https://www.anthropic.com/claude)
 [![GPT-4.1 mini](https://img.shields.io/badge/GPT--4.1_mini-supported-74aa9c.svg)](https://openai.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/joelhsaltz/AI-FHIR-HACKATHON/blob/main/prototypes/you_are_the_agent_demo.ipynb)
 
 ---
 
@@ -138,6 +139,12 @@ Creating a new use case follows five steps. Each step has detailed guidance in
 5. **Verify in Colab.** Generate the notebook, upload to Google Drive, run all
    cells against the live FHIR server. Local testing is necessary but not
    sufficient — see [SPEC.md](SPEC.md#verification-requirements).
+
+> **Guardrails for Claude Code users:** Two hooks enforce verification. A
+> PreToolUse hook blocks notebook uploads to Drive unless a verification
+> timestamp exists. A Bash hook blocks `gcloud compute instances start/stop`
+> on the Vertex AI Workbench instance (must use `gcloud workbench instances`
+> or the `setup_vertex.sh` script). See [TECHNICAL.md](TECHNICAL.md#claude-code-hooks).
 
 ---
 

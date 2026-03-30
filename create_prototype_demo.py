@@ -411,7 +411,6 @@ def _get_ground_truth(patient_id):
     if factors >= 1:
         return "Moderate complexity"
     return "Routine"
-    return "No diabetes"
 
 # === State ===
 _state = {
@@ -942,19 +941,18 @@ else:
 
 CLASSIFY = r"""
 #@title Step 6: Classify this patient
-classification = "Routine" #@param ["Routine", "Moderate complexity", "High complexity", "No diabetes"]
-confirm = "No, let me query more" #@param ["No, let me query more", "Yes, submit my answer"]
+classification = "← Keep investigating" #@param ["← Keep investigating", "Routine", "Moderate complexity", "High complexity", "No diabetes"]
 
 if "_state" not in dir() or _state["patient_id"] is None:
     display(Markdown("**Run Step 4 first.**"))
 elif _state["current_case_idx"] >= _state["num_cases"]:
     display(Markdown("**All cases complete.** See your results in Step 7."))
-elif confirm != "Yes, submit my answer":
+elif classification == "← Keep investigating":
     _collected = len(_state.get("evidence", {}))
     display(Markdown(
-        f"**Not submitted.** You have gathered {_collected} evidence types so far.\n\n"
-        "Go back to **Step 5** to query more, or change **confirm** to "
-        "**\"Yes, submit my answer\"** and click Run."
+        f"**Not submitted yet.** You have gathered {_collected} evidence types so far.\n\n"
+        "Go back to **Step 5** to query more, or select your classification "
+        "from the dropdown above and click **Run** to submit."
     ))
     display(Markdown(_render_dashboard()))
 else:
@@ -974,13 +972,52 @@ else:
         "queries_used": _queries_used,
     })
 
+    # Build evidence explanation from what the ground truth function uses
+    _gt_pid = _state["patient_id"]
+    _, _gt_conds = _search_all_conditions_raw(_gt_pid)
+    _gt_has_diabetes = any(
+        c.get("code") in ("46635009", "44054006")
+        for c in _gt_conds.get("results", [])
+    )
+    _gt_hba1c_r = _search_observations(_gt_pid, "4548-4")[1]
+    _gt_hba1c = _gt_hba1c_r["results"][0]["value"] if _gt_hba1c_r["results"] else None
+    _gt_egfr_r = _search_observations(_gt_pid, "33914-3")[1]
+    _gt_egfr = _gt_egfr_r["results"][0]["value"] if _gt_egfr_r["results"] else None
+    _gt_uacr_r = _search_observations(_gt_pid, "14959-1")[1]
+    _gt_uacr = _gt_uacr_r["results"][0]["value"] if _gt_uacr_r["results"] else None
+    _gt_meds_r = _search_medications(_gt_pid)[1]
+    _gt_med_count = len(_gt_meds_r.get("results", []))
+
+    _evidence_lines = []
+    if not _gt_has_diabetes:
+        _evidence_lines.append("No diabetes diagnosis in the record")
+    else:
+        _evidence_lines.append("Diabetes diagnosis confirmed")
+    if _gt_hba1c is not None:
+        _label = "well-controlled" if _gt_hba1c < 7.5 else ("suboptimal" if _gt_hba1c < 9.0 else "poor control")
+        _evidence_lines.append(f"HbA1c {_gt_hba1c}% ({_label})")
+    if _gt_egfr is not None:
+        _label = "normal" if _gt_egfr >= 90 else ("mildly decreased" if _gt_egfr >= 60 else "CKD stage 3+")
+        _evidence_lines.append(f"eGFR {_gt_egfr} ({_label})")
+    if _gt_uacr is not None:
+        _label = "normal" if _gt_uacr < 30 else ("microalbuminuria" if _gt_uacr <= 300 else "macroalbuminuria")
+        _evidence_lines.append(f"UACR {_gt_uacr} ({_label})")
+    if _gt_med_count > 0:
+        _med_names = ", ".join(r["medication"] for r in _gt_meds_r["results"][:3])
+        _evidence_lines.append(f"{_gt_med_count} medication(s): {_med_names}")
+    _evidence_summary = " · ".join(_evidence_lines)
+
     # Immediate feedback
     if _is_correct:
-        _feedback = f"## ✓ Correct!\n\nThe answer is **{_correct_answer}**."
+        _feedback = (
+            f"## ✓ Correct!\n\nThe answer is **{_correct_answer}**.\n\n"
+            f"**Key evidence:** {_evidence_summary}"
+        )
     else:
         _feedback = (
             f"## ✗ Incorrect\n\n"
-            f"You answered **{classification}** — the correct answer is **{_correct_answer}**."
+            f"You answered **{classification}** — the correct answer is **{_correct_answer}**.\n\n"
+            f"**Key evidence:** {_evidence_summary}"
         )
 
     # Progress table
@@ -1069,7 +1106,7 @@ else:
 
 PROMPT_EDITOR = r"""
 #@title Step 8: Write your AI prompt
-agent_prompt = "You are a clinical data assistant assessing diabetes management complexity using FHIR queries. Classify each patient as Routine, Moderate complexity, High complexity, or No diabetes. Consider glycemic control, kidney function, and medication regimen. Use enough queries to be confident." #@param {type:"string"}
+agent_prompt = "Classify each patient's diabetes management complexity. Use the available FHIR query tools." #@param {type:"string"}
 
 _state["agent_prompt"] = agent_prompt
 
@@ -1447,7 +1484,7 @@ TOOLKIT = [
 API_KEY_SETUP = [
     "## Before You Start: Set Up Your API Key\n",
     "\n",
-    "Activity 2 (Steps 7-9) uses an AI model, which "
+    "Activity 2 (Steps 8-9) uses an AI model, which "
     "requires an API key. Activity 1 (where *you* are the agent) works without one, but "
     "you'll need the key to see the AI in action.\n",
     "\n",
@@ -1518,8 +1555,8 @@ ACTIVITY1_INTRO = [
     "\n",
     "- **Step 5 (Query)** — pick a FHIR query from the dropdown, click Run. "
     "Repeat as many times as you want to gather evidence.\n",
-    "- **Step 6 (Classify)** — when you're ready, select your answer and confirm. "
-    "You get immediate feedback — right or wrong, no take-backs.\n",
+    "- **Step 6 (Classify)** — when you're ready, select your answer from the "
+    "dropdown and click Run. You get immediate feedback — right or wrong, no take-backs.\n",
     "\n",
     "After each classification, the next case loads automatically. "
     "Go back to Step 5 to start querying the new patient.\n",
@@ -1545,8 +1582,8 @@ INVESTIGATE_INTRO = [
 CLASSIFY_INTRO = [
     "## Classify\n",
     "\n",
-    "When you have gathered enough evidence, select your classification below "
-    "and set **confirm** to **\"Yes, submit my answer\"**.\n",
+    "When you have gathered enough evidence, select your classification from the "
+    "dropdown below and click **Run** to submit.\n",
     "\n",
     "> **This is irreversible** — once you submit, you get feedback and move to "
     "the next case. Make sure you've queried enough to be confident.\n",

@@ -387,3 +387,52 @@ failure. They are not preferences.
    resource type. Label evidence by FHIR resource in dashboards. The toolkit
    reference card (mapping tools to FHIR endpoints) must be visible before the
    exercise starts. Hiding the FHIR layer defeats the learning objective.
+
+---
+
+## Distribution and Verification (2026-03-30)
+
+### Unverified distribution
+
+**What happened:** The demo notebook had a showstopper bug — Colab's form view
+didn't render the second dropdown (`confirm`) in Step 6, so students had no way
+to submit their classification. The markdown, the error output, and the activity
+intro all referenced a `confirm` field that was invisible. The notebook was
+distributed to a collaborator without re-running after the change was made.
+
+**Root cause:** A two-dropdown pattern in a single Colab form cell. Colab
+sometimes fails to render the second `#@param` field. The change seemed safe
+("just added a confirmation step") so it wasn't re-verified.
+
+**Fix:** Replaced with a single dropdown using "← Keep investigating" as the
+safe default. Any classification option = submission. No phantom `confirm` field.
+
+**Rule established:** Every notebook must pass end-to-end execution verification
+before distribution. "It was working before" is not verification. Any change to
+the generator — no matter how minor — invalidates prior verification.
+
+**Enforcement:** PreToolUse hook on `mcp__google-personal__create_drive_file`
+blocks `.ipynb` uploads unless a `.last_verified_<notebook>` timestamp file
+exists and is newer than the notebook. See `scripts/check_notebook_verified.sh`.
+
+### Wrong gcloud command on Workbench instances
+
+**What happened:** Used `gcloud compute instances start fhir-hackathon-instance`
+and got a 403 even with `roles/owner`. Spent 20 minutes debugging permissions,
+re-authenticating, checking IAM policies.
+
+**Root cause:** Vertex AI Workbench instances are managed resources. The Notebooks
+API places a mutation lock on the underlying Compute Engine VM to prevent
+out-of-band changes that could corrupt the Workbench state. `gcloud compute
+instances start/stop` bypasses the Workbench control plane and is blocked.
+`gcloud workbench instances start/stop` works correctly.
+
+**Existing infrastructure:** `setup_vertex.sh` already used the correct command.
+The problem was manually running gcloud instead of using the script.
+
+**Rule established:** Always use `/colab-mcp` skill or `bash setup_vertex.sh`.
+Never improvise gcloud commands for Workbench instances.
+
+**Enforcement:** PreToolUse hook on Bash blocks `gcloud compute instances
+start/stop` targeting `fhir-hackathon-instance`. See
+`scripts/check_gcloud_workbench.sh`.

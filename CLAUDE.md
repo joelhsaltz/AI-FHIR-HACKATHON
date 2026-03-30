@@ -1,5 +1,28 @@
 # CLAUDE.md — Project Context for Claude Code
 
+---
+
+> **STOP — Read these two rules before doing anything with notebooks or Vertex AI.**
+
+### Vertex AI Workbench — ALWAYS use the skill, never manual gcloud
+
+To connect to Vertex AI Workbench, use `/colab-mcp` or run `bash setup_vertex.sh`.
+**Never run `gcloud compute instances start/stop` on Workbench instances** — they
+are managed resources and the Compute Engine API will return 403 even for project
+owners. The `setup_vertex.sh` script uses `gcloud workbench instances start/stop`
+correctly. If you need Vertex AI for any reason, invoke the `colab-mcp` skill
+first. Do not improvise gcloud commands.
+
+### Notebook Distribution — verify first, no exceptions
+
+**Every notebook must pass end-to-end execution verification before distribution.**
+Distribution means: uploading to Google Drive, pushing to GitHub, sharing a Colab
+link, or giving to a collaborator. "It was working before" is not verification.
+Any change to the generator — no matter how minor — invalidates prior verification.
+Re-run on Vertex AI. No exceptions.
+
+---
+
 ## Project
 
 Framework for generating self-contained Google Colab notebooks that teach
@@ -298,7 +321,34 @@ python3 synthetic-ehr/scripts/validate_patients.py --input <csv>
 | `synthetic-ehr/assets/phenotype_template.json` | Phenotype configs for synthetic data generation |
 | `synthetic-ehr/scripts/generate_cohort.py` | Cohort generator — phenotypes + plan to CSV |
 | `student_materials/run_agent_explained.md` | Beginner-friendly walkthrough of the agent loop |
+| `scripts/check_notebook_verified.sh` | PreToolUse hook: blocks unverified notebook uploads to Drive |
+| `scripts/check_gcloud_workbench.sh` | PreToolUse hook: blocks `gcloud compute` mutations on Workbench instances |
+| `setup_vertex.sh` | Vertex AI lifecycle: start instance + SSH tunnel (PreToolUse hook) |
+| `stop_vertex.sh` | Vertex AI cleanup: kill SSH tunnel (Stop hook) |
 | `CHANGELOG.md` | All changes documented here |
+
+## Notebook Discoverability — Hard Rule
+
+**Every notebook intended for distribution must be one click away.** Notebooks
+buried in subdirectories are effectively invisible to collaborators who browse
+the GitHub repo or use Colab's GitHub import dialog.
+
+Requirements:
+- **README.md** must have an "Open in Colab" badge for every distributable
+  notebook. Badge format:
+  ```
+  [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/joelhsaltz/AI-FHIR-HACKATHON/blob/main/<path-to-notebook>)
+  ```
+- **GETTING_STARTED.md** must include the same badge with a direct Colab link
+  in the "Try it in Colab" section.
+- When adding a new distributable notebook, add badges to both files as part
+  of the same commit. Do not consider the notebook shipped until the badges
+  are in place.
+- The GitHub remote is `joelhsaltz/AI-FHIR-HACKATHON` (not `fhir-hackathon`,
+  which is only the local directory name). Always use the correct remote name
+  in Colab URLs.
+
+---
 
 ## Conventions
 
@@ -528,11 +578,12 @@ Institutional knowledge from building the framework is documented in
 
 Read this file before extending the framework or debugging infrastructure issues.
 
-## Active Plans
+## Completed Plans
 
-| Plan file | Description | Status |
-|-----------|-------------|--------|
-| `~/.claude/plans/floating-riding-crab.md` | Major documentation revision: framework reframing across all docs | Phase 4 — CLAUDE.md restructure |
-| `~/.claude/plans/clinical-agent-architecture.md` | Clinical agent pipeline: 4 agents + skills + synthetic data generator | Implemented |
-| `~/.claude/plans/colab-auth-vertex-migration.md` | Eliminate Colab re-auth: Vertex AI/Colab Enterprise API | Vertex AI implemented; Playwright path is legacy |
-| `~/.claude/plans/rosy-roaming-hartmanis.md` | Full redesign migration: Phase 0 prototype → Phase 6 smoke tests + docs | In Progress — Phase 0 prototype built |
+| Plan file | Description | Completed |
+|-----------|-------------|-----------|
+| `~/.claude/plans/twinkling-tinkering-crane.md` | API-agnostic provider support (Anthropic + OpenAI) | 2026-03-28, PR #20 |
+| `~/.claude/plans/floating-riding-crab.md` | Major documentation revision: framework reframing across all docs | 2026-03-28, PR #20 |
+| `~/.claude/plans/rosy-roaming-hartmanis.md` | Demo notebook prototype: complexity redesign + Vertex AI verification | 2026-03-28, PR #20 |
+| `~/.claude/plans/colab-auth-vertex-migration.md` | Vertex AI Workbench replaces Playwright for notebook verification | 2026-03-25, PR #19 |
+| `~/.claude/plans/clinical-agent-architecture.md` | Clinical agent pipeline: 4 agents + skills + inter-agent comms | 2026-03-24, PR #17 |
