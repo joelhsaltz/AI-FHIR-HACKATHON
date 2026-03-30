@@ -91,22 +91,49 @@ _SECRET_NAMES = {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY"}
 _DEFAULT_MODELS = {"anthropic": "claude-sonnet-4-20250514", "openai": "gpt-4.1-mini"}
 _secret_name = _SECRET_NAMES[_PROVIDER]
 
+_API_KEY = ""
+_key_source = ""
 try:
     from google.colab import userdata
     _API_KEY = userdata.get(_secret_name)
-except Exception:
+    _key_source = "Colab Secrets"
+except Exception as _e:
+    _key_error = str(_e)
     _API_KEY = os.environ.get(_secret_name, "")
+    if _API_KEY:
+        _key_source = "environment variable"
 
 MODEL = _DEFAULT_MODELS[_PROVIDER]
 _llm_client = None
+_llm_status = ""
 
-if _API_KEY:
-    if _PROVIDER == "anthropic":
-        from anthropic import Anthropic
-        _llm_client = Anthropic(api_key=_API_KEY)
-    elif _PROVIDER == "openai":
-        from openai import OpenAI
-        _llm_client = OpenAI(api_key=_API_KEY)
+if not _API_KEY:
+    _llm_status = (
+        f"**Not configured** — `{_secret_name}` not found.\n\n"
+        "To fix: click the **key icon** (🔑) in the left sidebar → "
+        f"**Add new secret** → name it `{_secret_name}` → paste your key → "
+        "toggle **Notebook access** ON → **re-run this cell (Step 1)**."
+    )
+else:
+    try:
+        if _PROVIDER == "anthropic":
+            from anthropic import Anthropic
+            _llm_client = Anthropic(api_key=_API_KEY)
+            # Quick validation — list models to check key is valid
+            _llm_client.models.list(limit=1)
+        elif _PROVIDER == "openai":
+            from openai import OpenAI
+            _llm_client = OpenAI(api_key=_API_KEY)
+            _llm_client.models.list()
+        _llm_status = f"Ready (from {_key_source})"
+    except Exception as _auth_err:
+        _llm_client = None
+        _llm_status = (
+            f"**Invalid API key** — `{_secret_name}` was found (from {_key_source}) "
+            f"but the {AI_PROVIDER} API rejected it.\n\n"
+            f"Error: `{str(_auth_err)[:200]}`\n\n"
+            "Check that the key is correct and has not expired."
+        )
 
 # ---- Provider adapter (3 functions) ----
 # _llm_create: Send a message, return (text, tool_calls, raw_response)
@@ -181,14 +208,15 @@ count_resp = FHIR_SESSION.get(f"{FHIR_BASE}/Patient", params={"_summary": "count
 patient_count = count_resp.json().get("total", "unknown")
 
 _provider_label = f"{AI_PROVIDER} ({MODEL})"
+_agent_icon = "✓ Ready" if _llm_client else "✗ Not ready"
+_agent_detail = f"{_provider_label} — for Activity 2" if _llm_client else _llm_status
 display(Markdown(
     "## Connection Status\n\n"
     "| Component | Status | Detail |\n"
     "|-----------|--------|--------|\n"
-    f"| FHIR Server | Connected | `{FHIR_BASE.split('//')[1].split('/')[0]}` · FHIR R4 |\n"
+    f"| FHIR Server | ✓ Connected | `{FHIR_BASE.split('//')[1].split('/')[0]}` · FHIR R4 |\n"
     f"| Patient records | {patient_count} | Synthetic cohort with diabetes phenotypes |\n"
-    f"| AI Agent | {'Ready' if _llm_client else 'Not configured'} "
-    f"| {_provider_label + ' — for Activity 2' if _llm_client else 'Add ' + _secret_name + ' in Secrets (see above)'} |\n"
+    f"| AI Agent | {_agent_icon} | {_agent_detail} |\n"
 ))
 """.strip()
 
@@ -1132,7 +1160,11 @@ RUN_AI_AGENT = r"""
 if not _state.get("case_patients"):
     display(Markdown("**Run Steps 3-4 first.**"))
 elif _llm_client is None:
-    display(Markdown("**AI Agent requires an API key.** See the setup section above."))
+    display(Markdown(
+        "**AI Agent requires a working API key.** Check the Connection Status "
+        "in Step 1 for details. If you added a key after running Step 1, "
+        "**re-run Step 1** to pick it up."
+    ))
 elif len(_state.get("human_results", [])) < _state.get("num_cases", 0):
     display(Markdown(
         f"**Finish Activity 1 first** (Step 5). You've classified "
