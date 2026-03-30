@@ -218,7 +218,11 @@ display(Markdown(
     f"| Patient records | {patient_count} | Synthetic cohort with diabetes phenotypes |\n"
     f"| AI Agent | {_agent_icon} | {_agent_detail} |\n"
 ))
-if not _llm_client:
+if _llm_client:
+    display(Markdown(
+        f"### ✅ API key validated — {_provider_label} is ready for Activity 2."
+    ))
+else:
     display(Markdown(
         "---\n"
         "### ⚠️ AI Agent Not Available\n\n"
