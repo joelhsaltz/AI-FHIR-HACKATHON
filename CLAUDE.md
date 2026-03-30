@@ -1,5 +1,28 @@
 # CLAUDE.md — Project Context for Claude Code
 
+---
+
+> **STOP — Read these two rules before doing anything with notebooks or Vertex AI.**
+
+### Vertex AI Workbench — ALWAYS use the skill, never manual gcloud
+
+To connect to Vertex AI Workbench, use `/colab-mcp` or run `bash setup_vertex.sh`.
+**Never run `gcloud compute instances start/stop` on Workbench instances** — they
+are managed resources and the Compute Engine API will return 403 even for project
+owners. The `setup_vertex.sh` script uses `gcloud workbench instances start/stop`
+correctly. If you need Vertex AI for any reason, invoke the `colab-mcp` skill
+first. Do not improvise gcloud commands.
+
+### Notebook Distribution — verify first, no exceptions
+
+**Every notebook must pass end-to-end execution verification before distribution.**
+Distribution means: uploading to Google Drive, pushing to GitHub, sharing a Colab
+link, or giving to a collaborator. "It was working before" is not verification.
+Any change to the generator — no matter how minor — invalidates prior verification.
+Re-run on Vertex AI. No exceptions.
+
+---
+
 ## Project
 
 Framework for generating self-contained Google Colab notebooks that teach
@@ -298,6 +321,10 @@ python3 synthetic-ehr/scripts/validate_patients.py --input <csv>
 | `synthetic-ehr/assets/phenotype_template.json` | Phenotype configs for synthetic data generation |
 | `synthetic-ehr/scripts/generate_cohort.py` | Cohort generator — phenotypes + plan to CSV |
 | `student_materials/run_agent_explained.md` | Beginner-friendly walkthrough of the agent loop |
+| `scripts/check_notebook_verified.sh` | PreToolUse hook: blocks unverified notebook uploads to Drive |
+| `scripts/check_gcloud_workbench.sh` | PreToolUse hook: blocks `gcloud compute` mutations on Workbench instances |
+| `setup_vertex.sh` | Vertex AI lifecycle: start instance + SSH tunnel (PreToolUse hook) |
+| `stop_vertex.sh` | Vertex AI cleanup: kill SSH tunnel (Stop hook) |
 | `CHANGELOG.md` | All changes documented here |
 
 ## Notebook Discoverability — Hard Rule

@@ -140,6 +140,12 @@ Creating a new use case follows five steps. Each step has detailed guidance in
    cells against the live FHIR server. Local testing is necessary but not
    sufficient — see [SPEC.md](SPEC.md#verification-requirements).
 
+> **Guardrails for Claude Code users:** Two hooks enforce verification. A
+> PreToolUse hook blocks notebook uploads to Drive unless a verification
+> timestamp exists. A Bash hook blocks `gcloud compute instances start/stop`
+> on the Vertex AI Workbench instance (must use `gcloud workbench instances`
+> or the `setup_vertex.sh` script). See [TECHNICAL.md](TECHNICAL.md#claude-code-hooks).
+
 ---
 
 ## Architecture at a Glance

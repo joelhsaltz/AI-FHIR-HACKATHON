@@ -6,7 +6,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Classify cell showstopper — invisible confirm dropdown.** Colab's form view
+  didn't render the second `#@param` field in Step 6. Replaced two-dropdown
+  pattern (classification + confirm) with a single dropdown using "← Keep
+  investigating" as the safe default. Selecting a classification = submission.
+
 ### Added
+
+- **Explanatory feedback on classification.** When students classify incorrectly,
+  the feedback now shows key evidence (HbA1c, eGFR, UACR, medications) that
+  supports the correct answer. Previously only showed "correct/incorrect."
+
+- **Open in Colab badges.** README.md and GETTING_STARTED.md now have one-click
+  "Open in Colab" badges. Notebook discoverability codified as a hard rule in
+  CLAUDE.md.
+
+- **Pre-distribution verification hook.** Blocks notebook uploads to Drive unless
+  a `.last_verified_<notebook>` timestamp exists and is newer than the notebook.
+  Prevents distributing unverified notebooks.
+
+- **Workbench gcloud guard hook.** Blocks `gcloud compute instances start/stop`
+  on Workbench instances (must use `gcloud workbench instances` or the skill).
+
+### Changed
+
+- **Weaker default AI prompt.** Step 8's default prompt is now deliberately
+  incomplete ("Classify each patient's diabetes management complexity. Use the
+  available FHIR query tools.") to force students to actually write prompts.
+
+- **Step number fix.** API key setup text corrected from "Steps 7-9" to
+  "Steps 8-9" for Activity 2.
 
 - **API-agnostic provider support (Anthropic + OpenAI).** Students select their
   AI provider via a dropdown in Step 1. A thin 3-function adapter normalizes

@@ -572,6 +572,14 @@ and structured output capture.
 | MCP Server | `uvx mcp-jupyter` with `REQUEST_TIMEOUT=180` |
 | Idle Shutdown | 60 min via `idle-timeout-seconds` metadata |
 
+### Important: Workbench Instances Are Managed Resources
+
+**Never use `gcloud compute instances start/stop/delete` on Workbench instances.**
+The Notebooks API places a mutation lock on the underlying Compute Engine VM.
+Even `roles/owner` gets a 403. Use `gcloud workbench instances start/stop` for
+mutations. Read-only `gcloud compute` commands (describe, list, ssh) still work.
+The `/colab-mcp` skill and `setup_vertex.sh` handle this correctly.
+
 ### Lifecycle Scripts
 
 **`setup_vertex.sh`** — runs as a PreToolUse hook before any `mcp__jupyter__*`
@@ -589,6 +597,16 @@ SSH tunnel only; the VM auto-stops after 60 min idle.
 
 In `.claude/settings.local.json`:
 - **PreToolUse** (`mcp__jupyter__.*`): `bash setup_vertex.sh --quiet`
+  — auto-starts instance and tunnel before any Jupyter MCP call
+- **PreToolUse** (`mcp__google-personal__create_drive_file`):
+  `bash scripts/check_notebook_verified.sh` — blocks `.ipynb` uploads
+  unless a `.last_verified_<notebook>` timestamp exists and is newer than
+  the notebook file. Prevents distributing unverified notebooks.
+- **PreToolUse** (`Bash`): `bash scripts/check_gcloud_workbench.sh`
+  — blocks `gcloud compute instances start/stop` on Workbench instances.
+  Workbench instances are managed resources; the Compute Engine API returns
+  403 even for project owners. Must use `gcloud workbench instances` or
+  `setup_vertex.sh`.
 - **Stop** (all): `bash stop_vertex.sh`
 
 ### MCP Capabilities
