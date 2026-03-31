@@ -1038,29 +1038,30 @@ else:
         _evidence_lines.append("Diabetes diagnosis confirmed")
     if _gt_hba1c is not None:
         _label = "well-controlled" if _gt_hba1c < 7.5 else ("suboptimal" if _gt_hba1c < 9.0 else "poor control")
-        _evidence_lines.append(f"HbA1c {_gt_hba1c}% ({_label})")
+        _evidence_lines.append(f"HbA1c {_gt_hba1c}% ({_label}; target < 7.0%, suboptimal > 7.5%, poor > 9.0%)")
     if _gt_egfr is not None:
         _label = "normal" if _gt_egfr >= 90 else ("mildly decreased" if _gt_egfr >= 60 else "CKD stage 3+")
-        _evidence_lines.append(f"eGFR {_gt_egfr} ({_label})")
+        _evidence_lines.append(f"eGFR {_gt_egfr} mL/min ({_label}; normal > 90, CKD 3: 30–59, CKD 4: 15–29)")
     if _gt_uacr is not None:
         _label = "normal" if _gt_uacr < 30 else ("microalbuminuria" if _gt_uacr <= 300 else "macroalbuminuria")
-        _evidence_lines.append(f"UACR {_gt_uacr} ({_label})")
+        _evidence_lines.append(f"UACR {_gt_uacr} mg/g ({_label}; normal < 30, micro 30–300, macro > 300)")
     if _gt_med_count > 0:
         _med_names = ", ".join(r["medication"] for r in _gt_meds_r["results"][:3])
         _evidence_lines.append(f"{_gt_med_count} medication(s): {_med_names}")
-    _evidence_summary = " · ".join(_evidence_lines)
+    _evidence_summary = "\n- ".join(_evidence_lines)
+    _evidence_summary = "- " + _evidence_summary
 
     # Immediate feedback
     if _is_correct:
         _feedback = (
             f"## ✓ Correct!\n\nThe answer is **{_correct_answer}**.\n\n"
-            f"**Key evidence:** {_evidence_summary}"
+            f"**Key evidence:**\n{_evidence_summary}"
         )
     else:
         _feedback = (
             f"## ✗ Incorrect\n\n"
             f"You answered **{classification}** — the correct answer is **{_correct_answer}**.\n\n"
-            f"**Key evidence:** {_evidence_summary}"
+            f"**Key evidence:**\n{_evidence_summary}"
         )
 
     # Progress table
