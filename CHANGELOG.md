@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Repo onboarding overhaul.** README.md now has a "Start Here" decision tree
+  (try it / generate it / student) instead of three confusing Quick Start
+  sections. GETTING_STARTED.md opens with "Try It First" Colab link before
+  asking anyone to clone. Legacy prototypes and test notebooks moved out of
+  sight (archive/legacy_prototypes/ and tests/vertex_ai/). prototypes/ now
+  contains exactly one file. Root has zero stray notebooks.
+
 ### Fixed
 
 - **Classify cell showstopper — invisible confirm dropdown.** Colab's form view

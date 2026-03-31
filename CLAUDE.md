@@ -181,10 +181,11 @@ clinical coherence against the scenario design document.
 
 ```
 fhir-hackathon/
-├── archive/                    # Old v1/v2/v3 materials (preserved for reference)
-│   ├── student_materials/notebooks/
+├── archive/                    # Historical materials (preserved for reference)
+│   ├── student_materials/notebooks/   # v1/v2/v3 session-based notebooks
 │   ├── instructor_materials/notebooks/
-│   └── generators/
+│   ├── generators/                    # Old generator scripts
+│   └── legacy_prototypes/             # Earlier prototype iterations
 ├── src/fhir_hackathon_redesign/   # Core Python modules
 │   ├── __init__.py
 │   ├── fhir.py                 # FHIR client + Claude tool schemas
@@ -245,7 +246,12 @@ fhir-hackathon/
 │   ├── nb_validate.py                   # Structure + syntax validation
 │   ├── nb_exec_harness.py              # Generic exec() harness
 │   └── requirements.txt
-├── create_prototype_demo.py             # Generator: diabetes complexity notebook
+├── scripts/                             # Hook and utility scripts
+│   ├── check_notebook_verified.sh      # PreToolUse hook: block unverified uploads
+│   ├── check_gcloud_workbench.sh       # PreToolUse hook: block wrong gcloud commands
+│   └── colab-tools/                    # Legacy Playwright-based Colab automation
+├── tests/vertex_ai/                    # Vertex AI test notebooks (not distributed)
+├── create_prototype_demo.py            # Generator: diabetes complexity notebook
 ├── test_demo_notebook.py               # Smoke test for demo prototype
 ├── create_main_teaching_notebook.py    # Generator: main teaching notebook (being built)
 ├── synthetic-ehr/              # Synthetic EHR data generation pipeline
@@ -582,6 +588,7 @@ Read this file before extending the framework or debugging infrastructure issues
 
 | Plan file | Description | Completed |
 |-----------|-------------|-----------|
+| `~/.claude/plans/woolly-juggling-raven.md` | Fix notebook issues + verification guardrails + Colab badges | 2026-03-30, PR #21 |
 | `~/.claude/plans/twinkling-tinkering-crane.md` | API-agnostic provider support (Anthropic + OpenAI) | 2026-03-28, PR #20 |
 | `~/.claude/plans/floating-riding-crab.md` | Major documentation revision: framework reframing across all docs | 2026-03-28, PR #20 |
 | `~/.claude/plans/rosy-roaming-hartmanis.md` | Demo notebook prototype: complexity redesign + Vertex AI verification | 2026-03-28, PR #20 |

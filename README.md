@@ -16,6 +16,20 @@ repo, point it at your FHIR server, and generate notebooks for your course.
 
 ---
 
+## Start Here
+
+**Want to try the notebook?**
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/joelhsaltz/AI-FHIR-HACKATHON/blob/main/prototypes/you_are_the_agent_demo.ipynb)
+One click, no setup. Add your API key to Colab Secrets (see [instructions](#for-students)) and run.
+
+**Want to generate or customize notebooks?**
+See [GETTING_STARTED.md](GETTING_STARTED.md) — a focused walkthrough from clone to creating your own scenario.
+
+**Student?**
+Your instructor will share a Colab link. You just need an API key — see [For Students](#for-students) below.
+
+---
+
 ## What This Is
 
 This repository produces Google Colab notebooks where students explore FHIR
@@ -26,28 +40,70 @@ and dropdowns, never Python.
 
 **FHIR is the constant.** The clinical question changes, the activity structure
 changes, the pedagogical pattern changes — but the underlying data layer is
-always FHIR resources retrieved through standard queries. This is what makes the
-framework reusable: new scenarios reuse the FHIR connection, tool definitions,
-and generator infrastructure while defining their own clinical questions and
-educational activities.
+always FHIR resources retrieved through standard queries.
 
-### Current Use Case
+### Current Notebook: "You Are the Agent"
 
-**"You Are the Agent"** — Students manually perform an AI agent's job (choosing
-FHIR queries, interpreting results, classifying patients), then watch an AI
-agent do the same thing autonomously and compare strategies. The first scenario
-is diabetes management complexity assessment. Students choose their AI provider
-(Anthropic or OpenAI) via a dropdown — see [AI Provider Support](#ai-provider-support).
+Students manually perform an AI agent's job (choosing FHIR queries, interpreting
+results, classifying patients), then write a prompt for an AI agent to do the
+same thing autonomously and compare strategies. The scenario is diabetes
+management complexity assessment. Students choose their AI provider (Anthropic
+or OpenAI) via a dropdown.
 
-### Planned Use Cases
+### For Students
 
-- **Adverse event evaluation** — Review structured FHIR data to assess whether
-  an outcome is drug-related. Teaches evidence synthesis and causality reasoning.
-- **Report integration** — Extract findings from radiology and pathology reports
-  and integrate with structured clinical data. Teaches cross-resource reasoning.
-- **Population health queries** — Write natural-language requests that an AI
-  agent operationalizes into FHIR queries across a patient population. Teaches
-  prompt design and agent-scale reasoning.
+1. Open the notebook link your instructor provides (Google Colab)
+2. Add your API key to Colab Secrets (key icon in left sidebar):
+   - **Anthropic users:** add `ANTHROPIC_API_KEY`
+   - **OpenAI users:** add `OPENAI_API_KEY`
+   - Toggle **Notebook access** ON for the secret
+3. In Step 1, select your **AI Provider** from the dropdown
+4. Run cells top-to-bottom — all interaction is via dropdown menus
+
+> Step 1 validates your API key immediately. If there's a problem, you'll see
+> a clear error with instructions. Activity 1 works without an API key;
+> Activity 2 requires one.
+
+---
+
+## For Faculty: Generate and Customize
+
+### Run the existing notebook locally
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/joelhsaltz/AI-FHIR-HACKATHON.git
+cd AI-FHIR-HACKATHON
+
+# 2. Configure credentials
+cp .env.example .env
+# Edit .env — add your ANTHROPIC_API_KEY or OPENAI_API_KEY
+
+# 3. Validate the FHIR server
+python instructor_materials/validate_fhir_server.py
+
+# 4. Generate the notebook
+python create_prototype_demo.py
+# Output: prototypes/you_are_the_agent_demo.ipynb
+
+# 5. Run the smoke test
+python test_demo_notebook.py
+```
+
+### Create a new scenario
+
+See [GETTING_STARTED.md](GETTING_STARTED.md) for the full walkthrough, or
+the short version:
+
+1. **Design the scenario** — `docs/scenarios/<name>.md` (or use `/scenario-design`)
+2. **Generate synthetic data** (if needed) — `synthetic-ehr/` pipeline
+3. **Write a generator script** — follow `create_prototype_demo.py`
+4. **Write a smoke test** — follow `test_demo_notebook.py`
+5. **Verify in Colab** — generate, upload, run all cells against live FHIR data
+
+> **Guardrails for Claude Code users:** Hooks enforce verification before
+> distribution and block incorrect Vertex AI commands. See
+> [TECHNICAL.md](TECHNICAL.md#claude-code-hooks).
 
 ---
 
@@ -62,89 +118,6 @@ Scenario design doc          Generator script           Google Colab
   Phenotype configs          Smoke test script
   (synthetic-ehr/)           (test_*_notebook.py)
 ```
-
-Each scenario is defined in a design document that specifies the clinical
-question, evidence requirements, and classification categories. A generator
-script consumes the scenario design and produces a self-contained Colab
-notebook. A smoke test validates the notebook locally; final verification
-runs against the live FHIR server.
-
----
-
-## Quick Start: Run an Existing Notebook
-
-> **New to the framework?** See [GETTING_STARTED.md](GETTING_STARTED.md) for a
-> focused walkthrough from clone to creating your own scenario.
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/joelhsaltz/AI-FHIR-HACKATHON.git
-cd AI-FHIR-HACKATHON
-
-# 2. Configure credentials
-cp .env.example .env
-# Edit .env — add your ANTHROPIC_API_KEY or OPENAI_API_KEY
-# (at least one required for AI agent activities)
-# FHIR server credentials are pre-configured for the SBU teaching server
-
-# 3. Validate the FHIR server
-python instructor_materials/validate_fhir_server.py
-
-# 4. Generate the notebook
-python create_prototype_demo.py
-# Output: prototypes/you_are_the_agent_demo.ipynb
-
-# 5. Run the smoke test (16 cells, live FHIR data)
-python test_demo_notebook.py
-
-# 6. Upload to Google Colab and run all cells
-# Students need an API key for their chosen provider in Colab Secrets
-```
-
-### For Students
-
-1. Open the notebook link your instructor provides (Google Colab)
-2. Add your API key to Colab Secrets (key icon in left sidebar):
-   - **Anthropic users:** add `ANTHROPIC_API_KEY`
-   - **OpenAI users:** add `OPENAI_API_KEY`
-3. In Step 1, select your **AI Provider** from the dropdown (Anthropic or OpenAI)
-4. Run cells top-to-bottom — all interaction is via dropdown menus
-
----
-
-## Quick Start: Create a New Scenario
-
-Creating a new use case follows five steps. Each step has detailed guidance in
-[TECHNICAL.md](TECHNICAL.md).
-
-1. **Design the scenario.** Write a design document at `docs/scenarios/<name>.md`
-   using the [scenario template specification](SPEC.md#scenario-template-specification).
-   The reference example is
-   [`docs/scenarios/diabetes-type-classification.md`](docs/scenarios/diabetes-type-classification.md).
-   Or use the Clinical Scenario Designer agent (`/scenario-design`) to generate one.
-
-2. **Generate synthetic data** (if needed). Use the Synthetic Data Architect
-   agent (`/synth-data`) or write phenotype configs directly. The pipeline is at
-   `synthetic-ehr/` — see [TECHNICAL.md](TECHNICAL.md#synthetic-ehr-data-pipeline).
-
-3. **Write a generator script.** Follow the pattern in `create_prototype_demo.py`:
-   define cell content as string constants, assemble with helper functions,
-   write as JSON. See [TECHNICAL.md](TECHNICAL.md#generator-pattern) for the
-   full guide.
-
-4. **Write a smoke test.** Follow the pattern in `test_demo_notebook.py`:
-   extract cells, strip `#@param`, run via `exec()` with mocked inputs and
-   per-cell timeouts.
-
-5. **Verify in Colab.** Generate the notebook, upload to Google Drive, run all
-   cells against the live FHIR server. Local testing is necessary but not
-   sufficient — see [SPEC.md](SPEC.md#verification-requirements).
-
-> **Guardrails for Claude Code users:** Two hooks enforce verification. A
-> PreToolUse hook blocks notebook uploads to Drive unless a verification
-> timestamp exists. A Bash hook blocks `gcloud compute instances start/stop`
-> on the Vertex AI Workbench instance (must use `gcloud workbench instances`
-> or the `setup_vertex.sh` script). See [TECHNICAL.md](TECHNICAL.md#claude-code-hooks).
 
 ---
 

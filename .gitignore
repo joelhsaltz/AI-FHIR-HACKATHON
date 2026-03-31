@@ -36,6 +36,14 @@ notebooklm_export/
 # Large PDFs (stored outside repo)
 Notebook LM talks/*.pdf
 
+# Vertex AI test notebooks (keep in tests/vertex_ai/ if needed)
+vertex_test_*.ipynb
+connection_test.ipynb
+fhir_hackathon_init.ipynb
+
+# Notebook verification timestamps
+.last_verified_*
+
 # Temporary files
 *.tmp
 *.log
