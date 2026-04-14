@@ -27,7 +27,7 @@ Anthropic API key isn't set, Layers 0-3 still work.
 
 ## Scripts Location
 
-All scripts live in `scripts/colab-tools/` relative to the project root:
+All scripts live in `archive/colab-tools/` relative to the project root:
 
 | Script | Purpose |
 |--------|---------|
@@ -61,7 +61,7 @@ After sign-in, the script exports cookies via `context.storage_state()` to `auth
 for use by all Colab tools (which use ephemeral contexts with the saved state).
 
 **Steps:**
-1. Run `python scripts/colab-tools/auth_setup.py`
+1. Run `python archive/colab-tools/auth_setup.py`
 2. Sign in to Google in the browser window that opens
 3. Script saves storageState to `~/.colab-notebook-tools/auth.json`
 4. Session persists for months (Google cookies last ~2 years)
@@ -79,9 +79,9 @@ for use by all Colab tools (which use ephemeral contexts with the saved state).
 Validate a notebook's structure and code without running in Colab.
 
 **Steps:**
-1. Run `python scripts/colab-tools/nb_validate.py <path.ipynb>`
+1. Run `python archive/colab-tools/nb_validate.py <path.ipynb>`
 2. Checks: valid nbformat, kernel metadata, code cell syntax (ast.parse), common Colab issues
-3. For deeper validation: `python scripts/colab-tools/nb_exec_harness.py <path.ipynb> --skip-pattern "LLM|agent" --timeout 60`
+3. For deeper validation: `python archive/colab-tools/nb_exec_harness.py <path.ipynb> --skip-pattern "LLM|agent" --timeout 60`
 4. Review the JSON output — fix any errors in the generator script, not the notebook
 
 **Flags:**
@@ -104,7 +104,7 @@ Validate locally, upload to Drive, run in Colab, take screenshots.
    - If neither is available: ask user to upload manually and provide the Drive file ID
 3. Run the screenshot script:
    ```bash
-   python scripts/colab-tools/colab_screenshot.py <drive_file_id> \
+   python archive/colab-tools/colab_screenshot.py <drive_file_id> \
      --sections --output-dir ./colab_screenshots
    ```
 4. Read the screenshots (Claude can view PNG files) and report:
@@ -170,7 +170,7 @@ Uses the Anthropic API to evaluate the notebook from a BMI 512 student's perspec
 1. Ensure screenshots exist (run `/nb-verify` first if needed)
 2. Run the review:
    ```bash
-   python scripts/colab-tools/student_review.py \
+   python archive/colab-tools/student_review.py \
      --screenshots ./colab_screenshots \
      --notebook path/to/notebook.ipynb \
      --human-readable
@@ -208,9 +208,9 @@ fix → iterate until the notebook passes all checklist items or max iterations 
 **Steps:**
 1. Run the fix loop:
    ```bash
-   python scripts/colab-tools/fix_loop.py \
+   python archive/colab-tools/fix_loop.py \
      --generator create_prototype_demo.py \
-     --notebook prototypes/you_are_the_agent_demo.ipynb \
+     --notebook notebooks/you_are_the_agent_demo.ipynb \
      --file-id <drive_file_id> \
      --max-iterations 5
    ```

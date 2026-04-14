@@ -16,7 +16,7 @@ import uuid
 
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-OUTPUT_PATH = os.path.join(SCRIPT_DIR, "prototypes", "you_are_the_agent_demo.ipynb")
+OUTPUT_PATH = os.path.join(SCRIPT_DIR, "notebooks", "you_are_the_agent_demo.ipynb")
 
 
 def _id():

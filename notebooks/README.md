@@ -1,6 +1,6 @@
-# Prototypes
+# Notebooks
 
-Generated notebooks live here. **Never edit these files directly** — edit the
+Distributable notebooks live here. **Never edit these files directly** — edit the
 generator script and regenerate.
 
 ## Current Notebook
@@ -8,7 +8,7 @@ generator script and regenerate.
 **`you_are_the_agent_demo.ipynb`** — "You Are the Agent" diabetes complexity
 assessment game.
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/joelhsaltz/AI-FHIR-HACKATHON/blob/main/prototypes/you_are_the_agent_demo.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/joelhsaltz/AI-FHIR-HACKATHON/blob/main/notebooks/you_are_the_agent_demo.ipynb)
 
 **Generator:** `create_prototype_demo.py` (repo root)
 **Smoke test:** `test_demo_notebook.py` (repo root)

@@ -12,14 +12,14 @@ repo, point it at your FHIR server, and generate notebooks for your course.
 [![Claude Sonnet 4](https://img.shields.io/badge/Claude-Sonnet%204-purple.svg)](https://www.anthropic.com/claude)
 [![GPT-4.1 mini](https://img.shields.io/badge/GPT--4.1_mini-supported-74aa9c.svg)](https://openai.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/joelhsaltz/AI-FHIR-HACKATHON/blob/main/prototypes/you_are_the_agent_demo.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/joelhsaltz/AI-FHIR-HACKATHON/blob/main/notebooks/you_are_the_agent_demo.ipynb)
 
 ---
 
 ## Start Here
 
 **Want to try the notebook?**
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/joelhsaltz/AI-FHIR-HACKATHON/blob/main/prototypes/you_are_the_agent_demo.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/joelhsaltz/AI-FHIR-HACKATHON/blob/main/notebooks/you_are_the_agent_demo.ipynb)
 One click, no setup. Add your API key to Colab Secrets (see [instructions](#for-students)) and run.
 
 **Want to generate or customize notebooks?**
@@ -80,11 +80,11 @@ cp .env.example .env
 # Edit .env — add your ANTHROPIC_API_KEY or OPENAI_API_KEY
 
 # 3. Validate the FHIR server
-python instructor_materials/validate_fhir_server.py
+python scripts/validate_fhir_server.py
 
 # 4. Generate the notebook
 python create_prototype_demo.py
-# Output: prototypes/you_are_the_agent_demo.ipynb
+# Output: notebooks/you_are_the_agent_demo.ipynb
 
 # 5. Run the smoke test
 python test_demo_notebook.py
@@ -146,14 +146,8 @@ Scenario design doc          Generator script           Google Colab
 
 ```
 fhir-hackathon/
-├── prototypes/                     # Generated notebooks
+├── notebooks/                      # Distributable notebooks (current artifacts)
 │   └── you_are_the_agent_demo.ipynb
-├── src/fhir_hackathon_redesign/    # Core Python modules
-│   ├── fhir.py                     # FHIR client + Claude tool schemas
-│   ├── scenarios.py                # Scenario configs, state management
-│   ├── config.py                   # Settings (API keys, FHIR creds)
-│   ├── claude_agent.py             # Claude agent loop
-│   └── capstone.py                 # Population ranking helpers
 ├── create_prototype_demo.py        # Generator: diabetes complexity notebook
 ├── test_demo_notebook.py           # Smoke test (16 cells, live FHIR)
 ├── synthetic-ehr/                  # Synthetic patient data pipeline
@@ -162,13 +156,16 @@ fhir-hackathon/
 │   └── generated/                  # Output data (gitignored)
 ├── docs/                           # Design documents
 │   ├── scenarios/                  # Scenario design docs (shared artifacts)
-│   └── LESSONS_LEARNED.md          # Institutional knowledge
+│   ├── LESSONS_LEARNED.md          # Institutional knowledge
+│   └── run_agent_explained.md      # Agent loop explainer for students
+├── scripts/                        # Utility scripts
+│   ├── validate_fhir_server.py     # FHIR server validation
+│   ├── check_notebook_verified.sh  # PreToolUse hook
+│   └── check_gcloud_workbench.sh   # PreToolUse hook
 ├── .claude/agents/                 # Clinical agent identities (AGENT.md)
 ├── .claude/skills/                 # Agent orchestration skills
-├── scripts/colab-tools/            # Colab automation utilities
-├── student_materials/              # Student-facing orientation materials
-├── instructor_materials/           # Instructor tools + FHIR validator
-└── archive/                        # Old v1/v2/v3 materials
+├── tests/vertex_ai/                # Vertex AI test notebooks
+└── archive/                        # Old v1/v2/v3 materials, legacy tools
 ```
 
 ---
@@ -307,10 +304,7 @@ python create_prototype_demo.py
 python test_demo_notebook.py
 
 # Validate FHIR server connectivity
-python instructor_materials/validate_fhir_server.py
-
-# Validate notebook structure and syntax
-python scripts/colab-tools/nb_validate.py <path.ipynb>
+python scripts/validate_fhir_server.py
 
 # Synthetic data pipeline
 python3 synthetic-ehr/scripts/validate_phenotypes.py \
