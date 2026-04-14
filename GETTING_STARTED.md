@@ -170,6 +170,10 @@ This is where it gets interesting. The repo includes four AI agents (built as
 Claude Code skills) that help you design, build, and review clinical education
 scenarios. You need [Claude Code](#claude-code-setup) installed for this phase.
 
+**For the complete 8-stage walkthrough** with rationale, decision branches, and
+a shipping checklist, see [docs/NOTEBOOK_DEVELOPMENT_GUIDE.md](docs/NOTEBOOK_DEVELOPMENT_GUIDE.md).
+What follows here is the quick version.
+
 ### Start Claude Code in the project
 
 ```bash

@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Notebook Development Guide** (`docs/NOTEBOOK_DEVELOPMENT_GUIDE.md`).
+  End-to-end cookbook for building new notebooks: 8 stages from scenario
+  design to shipping, with agent triggers, decision branches, failure
+  recovery, and a shipping checklist. Linked from CLAUDE.md, README.md,
+  and GETTING_STARTED.md.
+
 ### Changed
 
 - **Phase 3 reorganization: usable vs legacy.** Major directory restructuring

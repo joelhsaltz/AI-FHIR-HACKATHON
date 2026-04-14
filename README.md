@@ -92,8 +92,8 @@ python test_demo_notebook.py
 
 ### Create a new scenario
 
-See [GETTING_STARTED.md](GETTING_STARTED.md) for the full walkthrough, or
-the short version:
+See [docs/NOTEBOOK_DEVELOPMENT_GUIDE.md](docs/NOTEBOOK_DEVELOPMENT_GUIDE.md)
+for the complete 8-stage pipeline, or the short version:
 
 1. **Design the scenario** — `docs/scenarios/<name>.md` (or use `/scenario-design`)
 2. **Generate synthetic data** (if needed) — `synthetic-ehr/` pipeline

@@ -66,6 +66,10 @@ combined dropdown UI, need richer multi-query scenarios.
 
 ## How to Add a New Scenario
 
+**Full guide:** [docs/NOTEBOOK_DEVELOPMENT_GUIDE.md](docs/NOTEBOOK_DEVELOPMENT_GUIDE.md)
+covers the complete 8-stage pipeline with rationale, decision branches,
+failure recovery, and a shipping checklist.
+
 End-to-end workflow from idea to shipped notebook:
 
 1. **Design the scenario:** `/scenario-design` produces `docs/scenarios/<name>.md`.
@@ -268,6 +272,7 @@ python3 synthetic-ehr/scripts/validate_patients.py --input <csv>
 | `notebooks/you_are_the_agent_demo.ipynb` | Demo prototype — FHIR-grounded, Colab form cells |
 | `create_prototype_demo.py` | Generator for the demo prototype (reference implementation) |
 | `test_demo_notebook.py` | Smoke test harness for the demo prototype |
+| `docs/NOTEBOOK_DEVELOPMENT_GUIDE.md` | End-to-end notebook creation pipeline: 8 stages, agents, decision branches, shipping checklist |
 | `docs/LESSONS_LEARNED.md` | Institutional knowledge: infrastructure pivots, Colab gotchas, verification failures |
 | `docs/TEACHING_APPLICATION_PLAN.md` | Full pedagogy and session design |
 | `docs/REDESIGN_SPIKE.md` | Architecture and technical decisions |
