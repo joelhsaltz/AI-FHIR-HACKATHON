@@ -20,7 +20,7 @@ fi
 # Extract notebook stem (e.g., "you_are_the_agent_demo" from "you_are_the_agent_demo.ipynb")
 STEM="${FILENAME%.ipynb}"
 VERIFY_FILE="$PROJECT_ROOT/.last_verified_$STEM"
-NOTEBOOK_FILE="$PROJECT_ROOT/prototypes/$FILENAME"
+NOTEBOOK_FILE="$PROJECT_ROOT/notebooks/$FILENAME"
 
 if [[ ! -f "$VERIFY_FILE" ]]; then
     echo "BLOCKED: Notebook '$FILENAME' has not been verified in this session."

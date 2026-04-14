@@ -106,7 +106,7 @@ def strip_params(src, **overrides):
 
 
 def main():
-    with open("prototypes/you_are_the_agent_demo.ipynb") as f:
+    with open("notebooks/you_are_the_agent_demo.ipynb") as f:
         nb = json.load(f)
 
     code_cells = []

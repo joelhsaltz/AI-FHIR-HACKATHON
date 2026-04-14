@@ -26,6 +26,11 @@ venv/
 *_key.txt
 credentials.json
 keys/
+Keys/
+
+# Transient output
+validation_results.json
+tasks/
 
 # Synthetic EHR generated data (large files, backed up to Box.com)
 synthetic-ehr/generated/

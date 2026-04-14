@@ -625,10 +625,8 @@ Four tools: `setup_notebook`, `query_notebook`, `modify_notebook_cells`,
 
 ### Legacy Playwright Tools
 
-At `scripts/colab-tools/` — superseded by Vertex AI but available for visual
-checks: `auth_setup.py`, `colab_screenshot.py`, `colab_common.py`,
-`colab_interact.py`, `student_review.py`, `student_walkthrough.py`,
-`fix_loop.py`, `nb_validate.py`, `nb_exec_harness.py`.
+Moved to `archive/colab-tools/` — superseded by Vertex AI. The skill at
+`.claude/skills/colab-notebook-tools/` still works for visual checks if needed.
 
 ---
 
@@ -648,7 +646,7 @@ checks: `auth_setup.py`, `colab_screenshot.py`, `colab_common.py`,
 
 1. Update `.env` with new URL, credentials, and TLS setting
 2. Update the generator's `SETUP` constant (hardcode for student notebooks)
-3. Run `python instructor_materials/validate_fhir_server.py` to verify
+3. Run `python scripts/validate_fhir_server.py` to verify
 4. Update SNOMED/LOINC codes in `TOOLS` if the server uses different vocabularies
 5. Generate synthetic data if the server lacks appropriate patients
 
@@ -659,7 +657,7 @@ checks: `auth_setup.py`, `colab_screenshot.py`, `colab_common.py`,
 ### Common Issues
 
 **"Connection failed. Check server URL and credentials."**
-FHIR server may be down. Run `python instructor_materials/validate_fhir_server.py`.
+FHIR server may be down. Run `python scripts/validate_fhir_server.py`.
 
 **Cell timeout in Vertex AI (empty output)**
 `REQUEST_TIMEOUT` must be >= 180. Check the Jupyter MCP config.

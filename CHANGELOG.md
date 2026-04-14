@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Phase 3 reorganization: usable vs legacy.** Major directory restructuring
+  to make it obvious what's current vs archived:
+  - `prototypes/` renamed to `notebooks/` (distributable artifacts)
+  - `student_materials/`, `instructor_materials/` archived (old 3-session approach)
+  - `src/fhir_hackathon_redesign/` archived (orphaned modules, not imported anywhere)
+  - `scripts/colab-tools/` archived (superseded by Vertex AI Workbench)
+  - Stale generators, docs, and infrastructure files moved to `archive/`
+  - `validate_fhir_server.py` rescued to `scripts/`
+  - `run_agent_explained.md` rescued to `docs/`
+  - `Keys/` removed from tracking (credentials should never be in git)
+  - Added `ORIENTATION.md` — short "what is this repo" for humans
+  - All references updated: README, GETTING_STARTED, CLAUDE.md, TECHNICAL.md,
+    generator, smoke test, hook scripts, skill files
+
 - **Repo onboarding overhaul.** README.md now has a "Start Here" decision tree
   (try it / generate it / student) instead of three confusing Quick Start
   sections. GETTING_STARTED.md opens with "Try It First" Colab link before

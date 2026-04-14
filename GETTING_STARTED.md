@@ -10,7 +10,7 @@ Google Colab, and used AI agents to design your own clinical scenario.
 
 Before cloning anything, see what the framework produces:
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/joelhsaltz/AI-FHIR-HACKATHON/blob/main/prototypes/you_are_the_agent_demo.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/joelhsaltz/AI-FHIR-HACKATHON/blob/main/notebooks/you_are_the_agent_demo.ipynb)
 
 This is the demo notebook you'll learn to generate in Phase 2. Running it
 first gives you context for what the framework produces. You'll need an API
@@ -92,7 +92,7 @@ The FHIR server credentials are pre-configured — no changes needed for
 ### Checkpoint: Verify FHIR connectivity
 
 ```bash
-python instructor_materials/validate_fhir_server.py
+python scripts/validate_fhir_server.py
 ```
 
 You should see **9/10 checks pass**:
@@ -117,7 +117,7 @@ task. This is expected.
 
 ```bash
 python create_prototype_demo.py
-# Output: prototypes/you_are_the_agent_demo.ipynb
+# Output: notebooks/you_are_the_agent_demo.ipynb
 ```
 
 ### Run the local smoke test
@@ -133,9 +133,9 @@ notebook's FHIR queries and logic without calling any LLM API.
 
 **Quickest way:** Click this badge to open the notebook directly:
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/joelhsaltz/AI-FHIR-HACKATHON/blob/main/prototypes/you_are_the_agent_demo.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/joelhsaltz/AI-FHIR-HACKATHON/blob/main/notebooks/you_are_the_agent_demo.ipynb)
 
-Or manually: go to [colab.research.google.com](https://colab.research.google.com/), click **GitHub** in the Open Notebook dialog, search for `joelhsaltz`, select the `AI-FHIR-HACKATHON` repo, and choose `prototypes/you_are_the_agent_demo.ipynb`.
+Or manually: go to [colab.research.google.com](https://colab.research.google.com/), click **GitHub** in the Open Notebook dialog, search for `joelhsaltz`, select the `AI-FHIR-HACKATHON` repo, and choose `notebooks/you_are_the_agent_demo.ipynb`.
 
 Then:
 1. Add your API key to Colab Secrets:

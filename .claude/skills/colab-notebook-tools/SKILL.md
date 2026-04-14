@@ -210,7 +210,7 @@ fix → iterate until the notebook passes all checklist items or max iterations 
    ```bash
    python scripts/colab-tools/fix_loop.py \
      --generator create_prototype_demo.py \
-     --notebook prototypes/you_are_the_agent_demo.ipynb \
+     --notebook notebooks/you_are_the_agent_demo.ipynb \
      --file-id <drive_file_id> \
      --max-iterations 5
    ```
