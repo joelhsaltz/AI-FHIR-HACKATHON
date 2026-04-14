@@ -110,9 +110,17 @@ _llm_status = ""
 if not _API_KEY:
     _llm_status = (
         f"**Not configured** — `{_secret_name}` not found.\n\n"
-        "To fix: click the **key icon** (🔑) in the left sidebar → "
-        f"**Add new secret** → name it `{_secret_name}` → paste your key → "
-        "toggle **Notebook access** ON → **re-run this cell (Step 1)**."
+        "**To fix:**\n"
+        "1. Click the **key icon** (🔑) in the left sidebar\n"
+        "2. Click **Add new secret**\n"
+        f"3. Name it exactly **`{_secret_name}`**\n"
+        "4. Paste your API key as the value\n"
+        "5. Toggle **Notebook access** ON\n"
+        "6. **Re-run this cell (Step 1)**\n\n"
+        "| Provider | Secret name (must match exactly) |\n"
+        "|----------|----------------------------------|\n"
+        "| Anthropic | `ANTHROPIC_API_KEY` |\n"
+        "| OpenAI | `OPENAI_API_KEY` |\n"
     )
 else:
     try:
