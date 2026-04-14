@@ -6,6 +6,19 @@ Google Colab, and used AI agents to design your own clinical scenario.
 
 ---
 
+## Try It First
+
+Before cloning anything, see what the framework produces:
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/joelhsaltz/AI-FHIR-HACKATHON/blob/main/prototypes/you_are_the_agent_demo.ipynb)
+
+This is the demo notebook you'll learn to generate in Phase 2. Running it
+first gives you context for what the framework produces. You'll need an API
+key (Anthropic or OpenAI) in Colab Secrets for Activity 2, but Activity 1
+works without one.
+
+---
+
 ## Prerequisites
 
 You need these before starting:
