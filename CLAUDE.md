@@ -503,6 +503,7 @@ Read this file before extending the framework or debugging infrastructure issues
 
 | Plan file | Description | Completed |
 |-----------|-------------|-----------|
+| `~/.claude/plans/magical-wibbling-backus.md` | Phase 3 repo reorganization: usable artifacts vs legacy | 2026-04-14, PR #24 |
 | `~/.claude/plans/woolly-juggling-raven.md` | Fix notebook issues + verification guardrails + Colab badges | 2026-03-30, PR #21 |
 | `~/.claude/plans/twinkling-tinkering-crane.md` | API-agnostic provider support (Anthropic + OpenAI) | 2026-03-28, PR #20 |
 | `~/.claude/plans/floating-riding-crab.md` | Major documentation revision: framework reframing across all docs | 2026-03-28, PR #20 |
